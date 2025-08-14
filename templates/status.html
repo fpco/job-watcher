@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
+
+    <style>
+     .text-red-100 {
+       --bs-text-opacity: 1;
+       color: #f8d7da !important; }
+
+     .text-red-200 {
+       --bs-text-opacity: 1;
+       color: #f1aeb5 !important; }
+
+     .text-red-300 {
+       --bs-text-opacity: 1;
+       color: #ea868f !important; }
+
+     .text-red-400 {
+       --bs-text-opacity: 1;
+       color: #e35d6a !important; }
+
+     .text-red-500 {
+       --bs-text-opacity: 1;
+       color: #dc3545 !important; }
+
+     .text-red-600 {
+       --bs-text-opacity: 1;
+       color: #b02a37 !important; }
+
+     .text-red-700 {
+       --bs-text-opacity: 1;
+       color: #842029 !important; }
+
+     .text-red-800 {
+       --bs-text-opacity: 1;
+       color: #58151c !important; }
+    </style>
+  </head>
+  <body class="bg-light bg-gradient">
+    <div class="container mt-5">
+      <div class="row">
+	<p class="fs-4 fw-bold text-center" style="letter-spacing: -0.05em">{{ title }}</p>
+      </div>
+      <div class="row m-5">
+	<div class="rounded shadow p-3">
+          <div class="p-1"><i class="bi bi-check-circle text-success"></i> <span class="fw-bold">Environment </span><span class="text-primary">{{env}}</span></div>
+          <div class="p-1"><i class="bi bi-check-circle text-success"></i> <span class="fw-bold">Version </span><span class="text-primary">{{build_version}}</span></div>
+          <div class="p-1"><i class="bi bi-check-circle text-success"></i> <span class="fw-bold">Live since </span><span class="text-secondary">{{live_since}}</span></div>
+          <div class="p-1"><i class="bi bi-check-circle text-success"></i> <span class="fw-bold">Current time </span><span class="text-secondary">{{now}}</span></div>
+	</div>
+      </div>
+      <div class="row m-5">
+	<table class="table table-secondary shadow rounded overflow-hidden">
+          <thead>
+            <th>Task</th>
+            <th>Status</th>
+          </thead>
+          <tbody>
+            {% for status in statuses %}
+            <tr>
+              <td class="table-light">
+                <a class="{{ status.short.css_class() }}" href="#{{ status.label.ident() }}">{{ status.label }}</a>
+              </td>
+              <td class="table-light">
+                {{ status.short.as_str() }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+	</table>
+      </div>
+      <div class="row m-5">
+	{% for status in statuses %}
+	<div class="shadow pt-3 border-bottom border-secondary-subtle border-5">
+          <p id="{{ status.label.ident() }}" class="fs-4 mb-1 {{ status.short.css_class()}}">{{ status.label }}</p>
+          <p><span class="fw-bold">Status: {{ status.short.as_str() }} </span><i class="text-secondary">{{ status.status.last_result.since() }}</i> | <i class="text-secondary"> Last Run time (Seconds): {{ status.status.total_run_time() }}</i></p>
+          <p>Successes: <span class="text-success">{{ status.status.counts.successes }}</span> Retries: <span class="text-warning">{{ status.status.counts.retries }}</span> Errors: <span class="text-danger">{{ status.status.counts.errors }}</span></p>
+          {% if let Some(started) = status.status.current_run_started.as_ref() %}
+          <p class="text-secondary">Currently running, started at {{ started }}</p>
+          {% endif %}
+
+          <pre class="user-select-auto">{{ status.status.last_result.value.as_ref().as_str() }}</pre>
+
+          {% if let Some(retrying) = status.status.last_retry_error.as_ref() %}
+          <p class="text-secondary">Currently retrying, last error message <i>{{ retrying.since() }}</i></p>
+          <pre class="user-select-auto">{{ retrying.value }}</pre>
+          {% endif %}
+	</div>
+	{% endfor %}
+    </div>
+  </body>
+</html>
