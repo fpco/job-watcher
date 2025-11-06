@@ -1,11 +1,11 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
-use std::sync::Arc;
-use tokio::net::TcpListener;
 use job_watcher::{
     AppBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
     config::{Delay, TaskConfig, WatcherConfig},
 };
+use std::sync::Arc;
+use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -38,7 +38,6 @@ impl WatcherAppContext for DummyApp {
     fn environment(&self) -> Option<String> {
         Some("test-env".to_string())
     }
-
 
     fn live_since(&self) -> DateTime<Utc> {
         Utc::now()
@@ -87,8 +86,6 @@ impl WatcherAppContext for DummyApp {
     fn title(&self) -> String {
         "Example application Status".to_owned()
     }
-
-
 }
 
 impl WatchedTask<DummyApp> for LeaderBoard {

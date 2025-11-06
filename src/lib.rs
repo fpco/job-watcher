@@ -26,9 +26,9 @@ mod defaults;
 
 use anyhow::{Context, Result};
 use axum::{
+    Json,
     http::{self, HeaderValue},
     response::IntoResponse,
-    Json,
 };
 use chrono::{DateTime, Duration, Utc};
 use config::{Delay, WatcherConfig};
@@ -154,10 +154,16 @@ pub struct TaskStatus {
 
 pub(crate) type StatusMap = HashMap<TaskLabel, Arc<RwLock<TaskStatus>>>;
 
+enum StoppedTask {
+    Background,
+    Periodic(TaskLabel),
+    RestApi,
+}
+
 #[derive(Default)]
 pub(crate) struct Watcher {
     to_spawn: Vec<ToSpawn>,
-    set: JoinSet<Result<()>>,
+    set: JoinSet<Result<StoppedTask>>,
     statuses: StatusMap,
 }
 
@@ -235,7 +241,7 @@ struct StatusTemplate<'a> {
     live_since: DateTime<Utc>,
     now: DateTime<Utc>,
     alert: bool,
-    title: String
+    title: String,
 }
 
 impl TaskStatuses {
@@ -254,7 +260,7 @@ impl TaskStatuses {
             now: Utc::now(),
             alert,
             live_since: app.live_since(),
-            title: app.title()
+            title: app.title(),
         }
     }
 
@@ -551,24 +557,40 @@ impl Watcher {
         app: Arc<C>,
         listener: TcpListener,
     ) -> Result<()> {
-        self.set.spawn(rest_api::start_rest_api(
-            app,
-            TaskStatuses {
-                statuses: Arc::new(self.statuses),
-            },
-            listener,
-        ));
+        self.set.spawn(async {
+            rest_api::start_rest_api(
+                app,
+                TaskStatuses {
+                    statuses: Arc::new(self.statuses),
+                },
+                listener,
+            )
+            .await?;
+            Ok(StoppedTask::RestApi)
+        });
         for ToSpawn { future, label } in self.to_spawn {
             self.set.spawn(async move {
                 future
                     .await
-                    .with_context(|| format!("Failure while running: {label}"))
+                    .with_context(|| format!("Failure while running: {label}"))?;
+                Ok(StoppedTask::Periodic(label))
             });
         }
-        while let Some(res) = self.set.join_next().await {
-            if let Err(e) = res.map_err(|e| e.into()).and_then(|res| res) {
-                self.set.abort_all();
-                return Err(e);
+        if let Some(res) = self.set.join_next().await {
+            match res.map_err(|e| e.into()).and_then(|res| res) {
+                Err(e) => {
+                    self.set.abort_all();
+                    return Err(e);
+                }
+                Ok(task) => {
+                    self.set.abort_all();
+                    let task_label = match task {
+                        StoppedTask::Background => "background task".into(),
+                        StoppedTask::Periodic(task_label) => format!("task tracking {task_label}"),
+                        StoppedTask::RestApi => "REST API".into(),
+                    };
+                    anyhow::bail!("Unexpected finish of {task_label}")
+                }
             }
         }
         Ok(())
@@ -673,7 +695,10 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
     where
         Fut: std::future::Future<Output = Result<()>> + Send + 'static,
     {
-        self.watcher.set.spawn(task);
+        self.watcher.set.spawn(async {
+            task.await?;
+            Ok(StoppedTask::Background)
+        });
     }
 
     pub fn watch_periodic<T>(&mut self, label: TaskLabel, mut task: T) -> Result<()>
