@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use axum::{
     extract::{Path, State},
-    http::{self, header, HeaderMap},
+    http::{self, HeaderMap, header},
     response::IntoResponse,
     routing::get,
 };
@@ -20,7 +20,9 @@ use super::{TaskLabel, TaskStatuses, WatcherAppContext};
 
 #[derive(Clone)]
 pub(crate) struct RestApp<C>
- where C: Clone {
+where
+    C: Clone,
+{
     pub(crate) app: Arc<C>,
     pub(crate) statuses: TaskStatuses,
 }

@@ -26,9 +26,9 @@ mod defaults;
 
 use anyhow::{Context, Result};
 use axum::{
+    Json,
     http::{self, HeaderValue},
     response::IntoResponse,
-    Json,
 };
 use chrono::{DateTime, Duration, Utc};
 use config::{Delay, WatcherConfig};
@@ -241,7 +241,7 @@ struct StatusTemplate<'a> {
     live_since: DateTime<Utc>,
     now: DateTime<Utc>,
     alert: bool,
-    title: String
+    title: String,
 }
 
 impl TaskStatuses {
@@ -260,7 +260,7 @@ impl TaskStatuses {
             now: Utc::now(),
             alert,
             live_since: app.live_since(),
-            title: app.title()
+            title: app.title(),
         }
     }
 
