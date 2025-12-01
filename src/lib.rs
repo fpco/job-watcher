@@ -23,6 +23,7 @@ mod rest_api;
 
 pub mod config;
 mod defaults;
+pub mod validators;
 
 use anyhow::{Context, Result};
 use axum::{
@@ -165,11 +166,13 @@ pub(crate) struct Watcher {
     to_spawn: Vec<ToSpawn>,
     set: JoinSet<Result<StoppedTask>>,
     statuses: StatusMap,
+    validator_registry: validators::ValidatorRegistry,
 }
 
 #[derive(Default, Clone)]
 pub(crate) struct TaskStatuses {
     statuses: Arc<StatusMap>,
+    validator_registry: validators::ValidatorRegistry,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, Debug)]
@@ -557,11 +560,13 @@ impl Watcher {
         app: Arc<C>,
         listener: TcpListener,
     ) -> Result<()> {
-        self.set.spawn(async {
+        let validator_registry = self.validator_registry.clone();
+        self.set.spawn(async move {
             rest_api::start_rest_api(
                 app,
                 TaskStatuses {
                     statuses: Arc::new(self.statuses),
+                    validator_registry,
                 },
                 listener,
             )
@@ -699,6 +704,11 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
             task.await?;
             Ok(StoppedTask::Background)
         });
+    }
+
+    /// Get access to the validator registry for adding/updating validator information
+    pub fn validator_registry(&self) -> &validators::ValidatorRegistry {
+        &self.watcher.validator_registry
     }
 
     pub fn watch_periodic<T>(&mut self, label: TaskLabel, mut task: T) -> Result<()>

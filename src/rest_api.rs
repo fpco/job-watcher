@@ -55,6 +55,8 @@ pub(crate) async fn start_rest_api<C: WatcherAppContext + Send + Sync + Clone + 
         .route("/healthz", get(healthz))
         .route("/status/{*label}", get(status::single))
         .route("/status", get(status::all))
+        .route("/validators", get(validators::all))
+        .route("/validators/{name}", get(validators::single))
         .layer(service_builder)
         .with_state(RestApp { app, statuses });
 
@@ -109,5 +111,31 @@ mod status {
         headers: HeaderMap,
     ) -> impl IntoResponse {
         handle_status_request(rest_app, Some(TaskLabel::new(label)), headers).await
+    }
+}
+
+mod validators {
+    use super::*;
+    use axum::Json;
+
+    pub(crate) async fn all<C: WatcherAppContext + Send + Sync + Clone + 'static>(
+        State(rest_app): State<RestApp<C>>,
+    ) -> impl IntoResponse {
+        let validators = rest_app.statuses.validator_registry.get_all().await;
+        Json(validators).into_response()
+    }
+
+    pub(crate) async fn single<C: WatcherAppContext + Send + Sync + Clone + 'static>(
+        State(rest_app): State<RestApp<C>>,
+        Path(name): Path<String>,
+    ) -> impl IntoResponse {
+        match rest_app.statuses.validator_registry.get_by_name(&name).await {
+            Some(info) => Json(info).into_response(),
+            None => {
+                let mut res = format!("Validator '{}' not found", name).into_response();
+                *res.status_mut() = http::StatusCode::NOT_FOUND;
+                res
+            }
+        }
     }
 }
