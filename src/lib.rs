@@ -97,7 +97,6 @@ impl TaskResultValue {
 #[derive(Clone, serde::Serialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct TaskResult {
-    #[serde(skip)]
     pub value: Arc<TaskResultValue>,
     pub updated: DateTime<Utc>,
 }
