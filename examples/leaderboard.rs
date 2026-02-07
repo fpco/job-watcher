@@ -68,11 +68,7 @@ impl WatcherAppContext for DummyApp {
 
     fn triggers_alert(&self, label: &TaskLabel, _selected_label: Option<&TaskLabel>) -> bool {
         // In a real app, you might have different logic for different tasks.
-        if label.ident() == "leaderboard" {
-            false
-        } else {
-            true
-        }
+        label.ident() != "leaderboard"
     }
 
     fn show_output(&self, _label: &TaskLabel) -> bool {
