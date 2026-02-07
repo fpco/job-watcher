@@ -245,12 +245,13 @@ impl TaskStatuses {
     ) -> StatusTemplate<'a> {
         let statuses = self.statuses(app, label).await;
         let alert = statuses.iter().any(|x| x.short.alert());
+        let now = Zoned::now();
 
         StatusTemplate {
             statuses,
             env: app.environment().unwrap_or("Unknown".to_owned()).into(),
             build_version: app.build_version().unwrap_or("Unknown".to_owned()).into(),
-            now: Zoned::now(),
+            now,
             alert,
             live_since: app.live_since(),
             title: app.title(),
