@@ -33,8 +33,8 @@ use axum::{
 use config::{Delay, WatcherConfig};
 use jiff::{Span, Zoned};
 use rand::Rng;
-use std::fmt::Write;
 use std::{borrow::Cow, collections::HashMap, fmt::Display, pin::Pin, sync::Arc, time::Instant};
+use std::{convert::Infallible, fmt::Write};
 use tokio::{net::TcpListener, sync::RwLock, task::JoinSet};
 
 pub trait WatcherAppContext {
@@ -69,7 +69,8 @@ impl Display for TaskLabel {
 }
 
 struct ToSpawn {
-    future: Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>,
+    /// This future is expected to be an infinite loop and never return Ok.
+    future: Pin<Box<dyn std::future::Future<Output = Result<Infallible>> + Send>>,
     label: TaskLabel,
 }
 
@@ -152,16 +153,10 @@ pub struct TaskStatus {
 
 pub(crate) type StatusMap = HashMap<TaskLabel, Arc<RwLock<TaskStatus>>>;
 
-enum StoppedTask {
-    Background,
-    Periodic(TaskLabel),
-    RestApi,
-}
-
 #[derive(Default)]
 pub(crate) struct Watcher {
     to_spawn: Vec<ToSpawn>,
-    set: JoinSet<Result<StoppedTask>>,
+    set: JoinSet<Result<Infallible>>,
     statuses: StatusMap,
 }
 
@@ -555,23 +550,18 @@ impl Watcher {
         app: Arc<C>,
         listener: TcpListener,
     ) -> Result<()> {
-        self.set.spawn(async {
-            rest_api::start_rest_api(
-                app,
-                TaskStatuses {
-                    statuses: Arc::new(self.statuses),
-                },
-                listener,
-            )
-            .await?;
-            Ok(StoppedTask::RestApi)
-        });
+        self.set.spawn(rest_api::start_rest_api(
+            app,
+            TaskStatuses {
+                statuses: Arc::new(self.statuses),
+            },
+            listener,
+        ));
         for ToSpawn { future, label } in self.to_spawn {
             self.set.spawn(async move {
                 future
                     .await
-                    .with_context(|| format!("Failure while running: {label}"))?;
-                Ok(StoppedTask::Periodic(label))
+                    .with_context(|| format!("Task failed: {}", label))
             });
         }
         if let Some(res) = self.set.join_next().await {
@@ -580,14 +570,9 @@ impl Watcher {
                     self.set.abort_all();
                     return Err(e);
                 }
-                Ok(task) => {
-                    self.set.abort_all();
-                    let task_label = match task {
-                        StoppedTask::Background => "background task".into(),
-                        StoppedTask::Periodic(task_label) => format!("task tracking {task_label}"),
-                        StoppedTask::RestApi => "REST API".into(),
-                    };
-                    anyhow::bail!("Unexpected finish of {task_label}")
+                Ok(_task) => {
+                    // This branch is impossible, as Infallible can't be created.
+                    anyhow::bail!("Impossible: Infallible witnessed!")
                 }
             }
         }
@@ -691,12 +676,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
     /// Watch a background job that runs continuously, launched immediately
     pub fn watch_background<Fut>(&mut self, task: Fut)
     where
-        Fut: std::future::Future<Output = Result<()>> + Send + 'static,
+        Fut: std::future::Future<Output = Result<Infallible>> + Send + 'static,
     {
-        self.watcher.set.spawn(async {
-            task.await?;
-            Ok(StoppedTask::Background)
-        });
+        self.watcher.set.spawn(task);
     }
 
     pub fn watch_periodic<T>(&mut self, label: TaskLabel, mut task: T) -> Result<()>
