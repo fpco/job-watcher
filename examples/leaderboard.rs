@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use chrono::{DateTime, Utc};
+use jiff::Zoned;
 use job_watcher::{
     AppBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
     config::{Delay, TaskConfig, WatcherConfig},
@@ -39,8 +39,8 @@ impl WatcherAppContext for DummyApp {
         Some("test-env".to_string())
     }
 
-    fn live_since(&self) -> DateTime<Utc> {
-        Utc::now()
+    fn live_since(&self) -> Zoned {
+        Zoned::now()
     }
 
     fn watcher_config(&self) -> WatcherConfig {

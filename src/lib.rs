@@ -30,8 +30,8 @@ use axum::{
     http::{self, HeaderValue},
     response::IntoResponse,
 };
-use chrono::{DateTime, Duration, Utc};
 use config::{Delay, WatcherConfig};
+use jiff::{Span, Zoned};
 use rand::Rng;
 use std::fmt::Write;
 use std::{borrow::Cow, collections::HashMap, fmt::Display, pin::Pin, sync::Arc, time::Instant};
@@ -41,7 +41,7 @@ pub trait WatcherAppContext {
     fn title(&self) -> String;
     fn environment(&self) -> Option<String>;
     fn build_version(&self) -> Option<String>;
-    fn live_since(&self) -> DateTime<Utc>;
+    fn live_since(&self) -> Zoned;
     fn watcher_config(&self) -> WatcherConfig;
     fn triggers_alert(&self, label: &TaskLabel, selected_label: Option<&TaskLabel>) -> bool;
     fn show_output(&self, label: &TaskLabel) -> bool;
@@ -52,7 +52,6 @@ pub trait WatcherAppContext {
 )]
 #[serde(transparent)]
 pub struct TaskLabel(String);
-
 impl TaskLabel {
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
@@ -98,7 +97,7 @@ impl TaskResultValue {
 #[serde(rename_all = "kebab-case")]
 pub struct TaskResult {
     pub value: Arc<TaskResultValue>,
-    pub updated: DateTime<Utc>,
+    pub updated: Zoned,
 }
 
 #[derive(Clone, serde::Serialize, Debug)]
@@ -106,18 +105,18 @@ pub struct TaskResult {
 pub struct TaskError {
     #[serde(skip)]
     pub value: Arc<String>,
-    pub updated: DateTime<Utc>,
+    pub updated: Zoned,
 }
 
 impl TaskResult {
     fn since(&self) -> Since {
-        Since(self.updated)
+        Since(self.updated.clone())
     }
 }
 
 impl TaskError {
     fn since(&self) -> Since {
-        Since(self.updated)
+        Since(self.updated.clone())
     }
 }
 
@@ -140,10 +139,10 @@ impl TaskCounts {
 pub struct TaskStatus {
     pub last_result: TaskResult,
     pub last_retry_error: Option<TaskError>,
-    pub current_run_started: Option<DateTime<Utc>>,
+    pub current_run_started: Option<Zoned>,
     /// Is the last_result out of date ?
     #[serde(skip)]
-    pub out_of_date: Option<Duration>,
+    pub out_of_date: Option<Span>,
     /// Should we expire the status of last result ?
     #[serde(skip)]
     pub expire_last_result: Option<(std::time::Duration, Instant)>,
@@ -237,8 +236,8 @@ struct StatusTemplate<'a> {
     statuses: Vec<RenderedStatus>,
     env: Cow<'a, str>,
     build_version: Cow<'a, str>,
-    live_since: DateTime<Utc>,
-    now: DateTime<Utc>,
+    live_since: Zoned,
+    now: Zoned,
     alert: bool,
     title: String,
 }
@@ -256,7 +255,7 @@ impl TaskStatuses {
             statuses,
             env: app.environment().unwrap_or("Unknown".to_owned()).into(),
             build_version: app.build_version().unwrap_or("Unknown".to_owned()).into(),
-            now: Utc::now(),
+            now: Zoned::now(),
             alert,
             live_since: app.live_since(),
             title: app.title(),
@@ -457,11 +456,11 @@ impl TaskStatus {
     }
 
     fn is_out_of_date(&self) -> OutOfDateType {
-        match self.current_run_started {
+        match &self.current_run_started {
             Some(started) => match self.out_of_date {
                 Some(out_of_date) => {
-                    let now = Utc::now();
-                    if started + Duration::seconds(300) <= now {
+                    let now = Zoned::now();
+                    if started.clone() + Span::new().seconds(300) <= now {
                         OutOfDateType::Very
                     } else if started + out_of_date <= now {
                         OutOfDateType::Slightly
@@ -509,12 +508,12 @@ impl TaskStatus {
     }
 }
 
-struct Since(DateTime<Utc>);
+struct Since(Zoned);
 
 impl Display for Since {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let duration = Utc::now().signed_duration_since(self.0);
-        let secs = duration.num_seconds();
+        let duration = Zoned::now().duration_since(&self.0);
+        let secs = duration.as_secs();
 
         match secs.cmp(&0) {
             std::cmp::Ordering::Less => write!(f, "{}", self.0),
@@ -717,11 +716,11 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
         let config = task_config_for(&self.app.watcher_config(), &label);
         let out_of_date = config
             .out_of_date
-            .map(|item| chrono::Duration::seconds(item.into()));
+            .map(|seconds| Span::new().seconds(seconds));
         let task_status = Arc::new(RwLock::new(TaskStatus {
             last_result: TaskResult {
                 value: TaskResultValue::NotYetRun.into(),
-                updated: Utc::now(),
+                updated: Zoned::now(),
             },
             last_retry_error: None,
             current_run_started: None,
@@ -750,7 +749,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                     *guard = TaskStatus {
                         last_result: old.last_result.clone(),
                         last_retry_error: old.last_retry_error.clone(),
-                        current_run_started: Some(Utc::now()),
+                        current_run_started: Some(Zoned::now()),
                         out_of_date,
                         counts: old.counts,
                         expire_last_result: old.expire_last_result,
@@ -801,9 +800,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                 }
                             }
                             let last_run_seconds = {
-                                if let Some(old_run_started) = old.current_run_started {
-                                    let duration = Utc::now() - old_run_started;
-                                    Some(duration.num_seconds())
+                                if let Some(old_run_started) = old.current_run_started.clone() {
+                                    let duration = Zoned::now() - old_run_started;
+                                    Some(duration.get_seconds())
                                 } else {
                                     None
                                 }
@@ -817,7 +816,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                     } else {
                                         TaskResultValue::Ok(message).into()
                                     },
-                                    updated: Utc::now(),
+                                    updated: Zoned::now(),
                                 },
                                 last_retry_error: None,
                                 current_run_started: None,
@@ -875,9 +874,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                             let mut guard = task_status.write().await;
                             let old = &*guard;
                             let last_run_seconds = {
-                                if let Some(old_run_started) = old.current_run_started {
-                                    let duration = Utc::now() - old_run_started;
-                                    Some(duration.num_seconds())
+                                if let Some(old_run_started) = old.current_run_started.clone() {
+                                    let duration = Zoned::now() - old_run_started;
+                                    Some(duration.get_seconds())
                                 } else {
                                     None
                                 }
@@ -905,7 +904,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                             *guard = TaskStatus {
                                 last_result: TaskResult {
                                     value: TaskResultValue::Err(new_error_message).into(),
-                                    updated: Utc::now(),
+                                    updated: Zoned::now(),
                                 },
                                 last_retry_error: None,
                                 current_run_started: None,
@@ -922,9 +921,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                 let mut guard = task_status.write().await;
                                 let old = &*guard;
                                 let last_run_seconds = {
-                                    if let Some(old_run_started) = old.current_run_started {
-                                        let duration = Utc::now() - old_run_started;
-                                        Some(duration.num_seconds())
+                                    if let Some(old_run_started) = old.current_run_started.clone() {
+                                        let duration = Zoned::now() - old_run_started;
+                                        Some(duration.get_seconds())
                                     } else {
                                         None
                                     }
@@ -933,7 +932,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                     last_result: old.last_result.clone(),
                                     last_retry_error: Some(TaskError {
                                         value: format!("{err:?}").into(),
-                                        updated: Utc::now(),
+                                        updated: Zoned::now(),
                                     }),
                                     current_run_started: None,
                                     out_of_date,
