@@ -76,7 +76,7 @@ impl WatcherAppContext for DummyApp {
     }
 
     fn build_version(&self) -> Option<String> {
-        Some("dfa2test".to_owned())
+        Some("dfa2testdkafjakfjakjkafjkafjakfjkajkajkajk".to_owned())
     }
 
     fn title(&self) -> String {

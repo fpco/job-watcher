@@ -147,7 +147,7 @@
                    </span>
                 </h3>
                 <p class="mt-1 max-w-2xl text-sm text-gray-500">
-                  Last updated: {{ status.status.last_result.since() }} | Run time: {{ status.status.total_run_time() }}s
+                  Last updated: {{ status.status.last_result.updated.strftime("%Y-%m-%d %H:%M:%S") }} | Run time: {{ status.status.total_run_time() }}s
                 </p>
               </div>
               <div class="flex items-center gap-2 text-sm text-gray-500">
@@ -186,7 +186,7 @@
                   <div class="ml-3">
                     <h3 class="text-sm font-medium text-blue-800">Task Currently Running</h3>
                     <div class="mt-2 text-sm text-blue-700">
-                      <p>Started at {{ started }}</p>
+                      <p>Started at {{ started.strftime("%Y-%m-%d %H:%M:%S") }}</p>
                     </div>
                   </div>
                 </div>
@@ -214,7 +214,7 @@
                     <div class="ml-3 w-full">
                       <h3 class="text-sm font-medium text-red-800">Retry in progress</h3>
                       <div class="mt-2 text-sm text-red-700">
-                        <p>Last error occurred {{ retrying.since() }}</p>
+                        <p>Last error occurred {{ retrying.updated.strftime("%Y-%m-%d %H:%M:%S") }}</p>
                         <div class="mt-2 rounded-md bg-red-100 p-3 overflow-x-auto">
                             <pre class="text-xs font-mono text-red-900">{{ retrying.value }}</pre>
                         </div>
