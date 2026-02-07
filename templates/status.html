@@ -195,10 +195,10 @@
 
               <!-- Main Output Log -->
               <div class="relative group">
-                <div class="absolute top-0 right-0 p-2 opacity-50 group-hover:opacity-100 pointer-events-none transition-opacity">
-                    <span class="text-xs text-white bg-gray-700 px-2 py-1 rounded">Output</span>
+                <div class="absolute top-0 right-0 p-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                    <button id="btn-{{ status.label.ident() }}" onclick="copyContent('{{ status.label.ident() }}')" class="text-xs text-white bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded cursor-pointer transition-colors">Copy Output</button>
                 </div>
-                <pre class="block w-full rounded-md border border-gray-700 bg-gray-900 text-gray-100 p-4 text-sm font-mono overflow-x-auto shadow-inner min-h-[5rem]">{{ status.status.last_result.value.as_ref().as_str() }}</pre>
+                <pre id="log-{{ status.label.ident() }}" class="block w-full rounded-md border border-gray-700 bg-gray-900 text-gray-100 p-4 text-sm font-mono overflow-x-auto shadow-inner min-h-[5rem]">{{ status.status.last_result.value.as_ref().as_str() }}</pre>
               </div>
 
               <!-- Retry Error Log -->
@@ -236,5 +236,28 @@
 
       </main>
     </div>
+    <script>
+      function copyContent(id) {
+        const el = document.getElementById('log-' + id);
+        if (!el) return;
+        const text = el.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          const btn = document.getElementById('btn-' + id);
+          if (btn) {
+             const originalText = btn.innerText;
+             btn.innerText = 'Copied!';
+             btn.classList.add('bg-green-600');
+             btn.classList.remove('bg-gray-700', 'hover:bg-gray-600');
+             setTimeout(() => {
+               btn.innerText = originalText;
+               btn.classList.remove('bg-green-600');
+               btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
+             }, 2000);
+          }
+        }).catch(err => {
+          console.error('Failed to copy: ', err);
+        });
+      }
+    </script>
   </body>
 </html>
