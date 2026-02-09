@@ -109,18 +109,6 @@ pub struct TaskError {
     pub updated: Zoned,
 }
 
-impl TaskResult {
-    fn since(&self) -> Since {
-        Since(self.updated.clone())
-    }
-}
-
-impl TaskError {
-    fn since(&self) -> Since {
-        Since(self.updated.clone())
-    }
-}
-
 #[derive(Clone, Copy, Default, serde::Serialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct TaskCounts {
@@ -235,6 +223,51 @@ struct StatusTemplate<'a> {
     now: Zoned,
     alert: bool,
     title: String,
+}
+
+impl<'a> StatusTemplate<'a> {
+    fn live_since_human(&self) -> String {
+        let duration = self.now.duration_since(&self.live_since);
+        let secs = duration.as_secs();
+
+        if secs < 0 {
+            return "In the future".to_string();
+        }
+        if secs == 0 {
+            return "just now".to_string();
+        }
+
+        let minutes = secs / 60;
+        let secs_rem = secs % 60;
+        let hours = minutes / 60;
+        let minutes_rem = minutes % 60;
+        let days = hours / 24;
+        let hours_rem = hours % 24;
+
+        let mut result = String::new();
+        let mut need_space = false;
+
+        for (number, letter) in [
+            (days, "d"),
+            (hours_rem, "h"),
+            (minutes_rem, "m"),
+            (secs_rem, "s"),
+        ] {
+            if number > 0 {
+                if need_space {
+                    result.push(' ');
+                }
+                result.push_str(&format!("{}{}", number, letter));
+                need_space = true;
+            }
+        }
+
+        if result.is_empty() {
+            "0s".to_string()
+        } else {
+            result
+        }
+    }
 }
 
 impl TaskStatuses {
@@ -500,42 +533,6 @@ impl TaskStatus {
                 }
             }
             TaskResultValue::NotYetRun => ShortStatus::NotYetRun,
-        }
-    }
-}
-
-struct Since(Zoned);
-
-impl Display for Since {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let duration = Zoned::now().duration_since(&self.0);
-        let secs = duration.as_secs();
-
-        match secs.cmp(&0) {
-            std::cmp::Ordering::Less => write!(f, "{}", self.0),
-            std::cmp::Ordering::Equal => write!(f, "just now ({})", self.0),
-            std::cmp::Ordering::Greater => {
-                let minutes = secs / 60;
-                let secs = secs % 60;
-                let hours = minutes / 60;
-                let minutes = minutes % 60;
-                let days = hours / 24;
-                let hours = hours % 24;
-
-                let mut need_space = false;
-                for (number, letter) in [(days, 'd'), (hours, 'h'), (minutes, 'm'), (secs, 's')] {
-                    if number > 0 {
-                        if need_space {
-                            write!(f, " {number}{letter}")?;
-                        } else {
-                            need_space = true;
-                            write!(f, "{number}{letter}")?;
-                        }
-                    }
-                }
-
-                write!(f, " ({})", self.0)
-            }
         }
     }
 }

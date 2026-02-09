@@ -16,7 +16,7 @@ struct LeaderBoard;
 struct TaskTwo;
 
 #[derive(Clone)]
-struct DummyApp;
+struct DummyApp(Zoned);
 
 impl DummyApp {
     async fn start() -> Result<()> {
@@ -24,7 +24,7 @@ impl DummyApp {
         println!("Starting leaderboard watcher example.");
         println!("The watcher will run, but the status page is not served in this example.");
 
-        let app = Arc::new(DummyApp);
+        let app = Arc::new(DummyApp(Zoned::now()));
         let mut builder = AppBuilder::new(app.clone());
 
         builder.watch_periodic(TaskLabel::new("leaderboard"), LeaderBoard)?;
@@ -40,7 +40,7 @@ impl WatcherAppContext for DummyApp {
     }
 
     fn live_since(&self) -> Zoned {
-        Zoned::now()
+        self.0.clone()
     }
 
     fn watcher_config(&self) -> WatcherConfig {
