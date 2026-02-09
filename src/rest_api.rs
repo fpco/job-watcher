@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc};
 
 use anyhow::Result;
 use axum::{
@@ -31,7 +31,7 @@ pub(crate) async fn start_rest_api<C: WatcherAppContext + Send + Sync + Clone + 
     app: Arc<C>,
     statuses: TaskStatuses,
     listener: TcpListener,
-) -> Result<()> {
+) -> Result<Infallible> {
     let service_builder = ServiceBuilder::new()
         .layer(
             TraceLayer::new_for_http()
@@ -60,8 +60,9 @@ pub(crate) async fn start_rest_api<C: WatcherAppContext + Send + Sync + Clone + 
 
     tracing::info!("Launching server");
 
-    axum::serve(listener, router.into_make_service()).await?;
-    Err(anyhow::anyhow!("Background task should never complete"))
+    let future = axum::serve(listener, router.into_make_service());
+    future.await?;
+    anyhow::bail!("REST API server shut down unexpectedly")
 }
 
 pub(crate) async fn healthz() -> &'static str {

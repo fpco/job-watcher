@@ -1,100 +1,263 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="h-full bg-gray-50">
   <head>
     <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ title }}</title>
-
-    <!-- Bootstrap -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
-
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-     .text-red-100 {
-       --bs-text-opacity: 1;
-       color: #f8d7da !important; }
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+      
+      /* 
+         Compatibility Layer for Backend Classes
+         The Rust backend returns specific class names like 'link-danger', 'text-red-400', etc.
+         We map these to Tailwind values or custom styles here to ensure they look good.
+      */
 
-     .text-red-200 {
-       --bs-text-opacity: 1;
-       color: #f1aeb5 !important; }
+      /* Link/Status Helpers */
+      .link-danger {
+        color: #dc2626; /* red-600 */
+        font-weight: 500;
+        text-decoration: none;
+      }
+      .link-danger:hover {
+        color: #b91c1c; /* red-700 */
+      }
 
-     .text-red-300 {
-       --bs-text-opacity: 1;
-       color: #ea868f !important; }
+      .link-success {
+        color: #16a34a; /* green-600 */
+        font-weight: 500;
+        text-decoration: none;
+      }
+      .link-success:hover {
+        color: #15803d; /* green-700 */
+      }
 
-     .text-red-400 {
-       --bs-text-opacity: 1;
-       color: #e35d6a !important; }
+      .link-primary {
+        color: #2563eb; /* blue-600 */
+        font-weight: 500;
+        text-decoration: none;
+      }
+      .link-primary:hover {
+        color: #1d4ed8; /* blue-700 */
+      }
 
-     .text-red-500 {
-       --bs-text-opacity: 1;
-       color: #dc3545 !important; }
+      /* 
+         Red Shade Mapping 
+         The backend uses text-red-100 to text-red-800.
+         We map them to standard Tailwind colors, ensuring visibility.
+      */
+      .text-red-100 { color: #fee2e2; } /* red-100 */
+      .text-red-200 { color: #fecaca; } /* red-200 */
+      .text-red-300 { color: #fca5a5; } /* red-300 */
+      .text-red-400 { color: #f87171; } /* red-400 */
+      .text-red-500 { color: #ef4444; } /* red-500 */
+      .text-red-600 { color: #dc2626; } /* red-600 */
+      .text-red-700 { color: #b91c1c; } /* red-700 */
+      .text-red-800 { color: #991b1b; } /* red-800 */
 
-     .text-red-600 {
-       --bs-text-opacity: 1;
-       color: #b02a37 !important; }
-
-     .text-red-700 {
-       --bs-text-opacity: 1;
-       color: #842029 !important; }
-
-     .text-red-800 {
-       --bs-text-opacity: 1;
-       color: #58151c !important; }
+      /* Custom scrollbar hiding if needed */
+      .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+      }
+      .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
     </style>
   </head>
-  <body class="bg-light bg-gradient">
-    <div class="container mt-5">
-      <div class="row">
-	<p class="fs-4 fw-bold text-center" style="letter-spacing: -0.05em">{{ title }}</p>
-      </div>
-      <div class="row m-5">
-	<div class="rounded shadow p-3">
-          <div class="p-1"><i class="bi bi-check-circle text-success"></i> <span class="fw-bold">Environment </span><span class="text-primary">{{env}}</span></div>
-          <div class="p-1"><i class="bi bi-check-circle text-success"></i> <span class="fw-bold">Version </span><span class="text-primary">{{build_version}}</span></div>
-          <div class="p-1"><i class="bi bi-check-circle text-success"></i> <span class="fw-bold">Live since </span><span class="text-secondary">{{live_since}}</span></div>
-          <div class="p-1"><i class="bi bi-check-circle text-success"></i> <span class="fw-bold">Current time </span><span class="text-secondary">{{now}}</span></div>
-	</div>
-      </div>
-      <div class="row m-5">
-	<table class="table table-secondary shadow rounded overflow-hidden">
-          <thead>
-            <th>Task</th>
-            <th>Status</th>
-          </thead>
-          <tbody>
+  <body class="h-full text-gray-900 antialiased">
+    <div class="min-h-full">
+      
+      <!-- Header -->
+      <header class="bg-white shadow-sm sticky top-0 z-10">
+        <div class="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8 flex items-center justify-between">
+          <h1 class="text-xl font-bold leading-7 text-gray-900 sm:truncate sm:tracking-tight">{{ title }}</h1>
+          <div class="text-sm text-gray-500 font-medium">{{ now.strftime("%Y-%m-%d %H:%M:%S") }}</div>
+        </div>
+      </header>
+
+      <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+        
+        <!-- Environment Stats -->
+        <div class="grid grid-cols-1 gap-5 sm:grid-cols-3 lg:grid-cols-3 mb-8">
+          <div class="overflow-hidden rounded-lg bg-white shadow px-4 py-5 sm:p-6 border-l-4 border-blue-500">
+            <dt class="truncate text-sm font-medium text-gray-500">Environment</dt>
+            <dd class="mt-1 text-2xl font-semibold tracking-tight text-gray-900">{{env}}</dd>
+          </div>
+          <div class="overflow-hidden rounded-lg bg-white shadow px-4 py-5 sm:p-6 border-l-4 border-purple-500">
+            <dt class="truncate text-sm font-medium text-gray-500">Version</dt>
+            <dd class="mt-1 text-2xl font-semibold tracking-tight text-gray-900 truncate" title="{{build_version}}">{{build_version}}</dd>
+          </div>
+          <div class="overflow-hidden rounded-lg bg-white shadow px-4 py-5 sm:p-6 border-l-4 border-green-500">
+            <dt class="truncate text-sm font-medium text-gray-500">Live since</dt>
+            <dd class="mt-1 text-lg font-semibold tracking-tight text-gray-900" title="{{live_since.strftime("%Y-%m-%d %H:%M:%S")}}">{{live_since_human()}}</dd>
+          </div>
+        </div>
+
+        <!-- Task Overview -->
+        <div class="overflow-hidden bg-white shadow sm:rounded-lg mb-10 border border-gray-200">
+          <div class="px-4 py-5 sm:px-6 border-b border-gray-200 bg-gray-50">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Task Overview</h3>
+          </div>
+          <ul role="list" class="divide-y divide-gray-200">
             {% for status in statuses %}
-            <tr>
-              <td class="table-light">
-                <a class="{{ status.short.css_class() }}" href="#{{ status.label.ident() }}">{{ status.label }}</a>
-              </td>
-              <td class="table-light">
-                {{ status.short.as_str() }}
-              </td>
-            </tr>
+            <li class="hover:bg-gray-50 transition-colors duration-150 ease-in-out">
+              <a href="#{{ status.label.ident() }}" class="block">
+                <div class="px-4 py-4 sm:px-6 flex items-center justify-between">
+                  <div class="flex items-center gap-4">
+                    <div class="flex-shrink-0">
+                      <!-- Status Indicator Dot -->
+                      <span class="relative flex h-3 w-3">
+                         <span class="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 {{ status.short.css_class() }} bg-current"></span>
+                         <span class="relative inline-flex rounded-full h-3 w-3 {{ status.short.css_class() }} bg-current"></span>
+                      </span>
+                    </div>
+                    <p class="text-sm font-medium {{ status.short.css_class() }}">{{ status.label }}</p>
+                  </div>
+                  <div class="flex items-center gap-4">
+                    <div class="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-md">{{ status.short.as_str() }}</div>
+                    <svg class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.16 8 7.23 4.29a.75.75 0 011.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
+                    </svg>
+                  </div>
+                </div>
+              </a>
+            </li>
             {% endfor %}
-          </tbody>
-	</table>
-      </div>
-      <div class="row m-5">
-	{% for status in statuses %}
-	<div class="shadow pt-3 border-bottom border-secondary-subtle border-5">
-          <p id="{{ status.label.ident() }}" class="fs-4 mb-1 {{ status.short.css_class()}}">{{ status.label }}</p>
-          <p><span class="fw-bold">Status: {{ status.short.as_str() }} </span><i class="text-secondary">{{ status.status.last_result.since() }}</i> | <i class="text-secondary"> Last Run time (Seconds): {{ status.status.total_run_time() }}</i></p>
-          <p>Successes: <span class="text-success">{{ status.status.counts.successes }}</span> Retries: <span class="text-warning">{{ status.status.counts.retries }}</span> Errors: <span class="text-danger">{{ status.status.counts.errors }}</span></p>
-          {% if let Some(started) = status.status.current_run_started.as_ref() %}
-          <p class="text-secondary">Currently running, started at {{ started }}</p>
-          {% endif %}
+          </ul>
+        </div>
 
-          <pre class="user-select-auto">{{ status.status.last_result.value.as_ref().as_str() }}</pre>
+        <!-- Detailed Status Cards -->
+        <div class="space-y-8">
+          {% for status in statuses %}
+          <div id="{{ status.label.ident() }}" class="overflow-hidden bg-white shadow-lg sm:rounded-lg border border-gray-100 scroll-mt-20">
+            <!-- Card Header -->
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200 bg-gray-50/50 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+              <div>
+                <h3 class="text-lg font-semibold leading-6 text-gray-900 flex items-center gap-2">
+                   {{ status.label }}
+                   <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white ring-1 ring-inset ring-gray-300 {{ status.short.css_class() }}">
+                     {{ status.short.as_str() }}
+                   </span>
+                </h3>
+                <p class="mt-1 max-w-2xl text-sm text-gray-500">
+                  Last updated: {{ status.status.last_result.updated.strftime("%Y-%m-%d %H:%M:%S") }} | Run time: {{ status.status.total_run_time() }}s
+                </p>
+              </div>
+              <div class="flex items-center gap-2 text-sm text-gray-500">
+                 <!-- Actions -->
+              </div>
+            </div>
 
-          {% if let Some(retrying) = status.status.last_retry_error.as_ref() %}
-          <p class="text-secondary">Currently retrying, last error message <i>{{ retrying.since() }}</i></p>
-          <pre class="user-select-auto">{{ retrying.value }}</pre>
-          {% endif %}
-	</div>
-	{% endfor %}
+            <div class="px-4 py-5 sm:p-6">
+              
+              <!-- Stats Row -->
+              <dl class="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-6">
+                <div class="overflow-hidden rounded-lg bg-green-50 px-4 py-3 sm:p-4 text-center">
+                  <dt class="truncate text-xs font-medium text-green-800 uppercase tracking-wider">Successes</dt>
+                  <dd class="mt-1 text-2xl font-semibold tracking-tight text-green-700">{{ status.status.counts.successes }}</dd>
+                </div>
+                <div class="overflow-hidden rounded-lg bg-yellow-50 px-4 py-3 sm:p-4 text-center">
+                  <dt class="truncate text-xs font-medium text-yellow-800 uppercase tracking-wider">Retries</dt>
+                  <dd class="mt-1 text-2xl font-semibold tracking-tight text-yellow-700">{{ status.status.counts.retries }}</dd>
+                </div>
+                <div class="overflow-hidden rounded-lg bg-red-50 px-4 py-3 sm:p-4 text-center">
+                  <dt class="truncate text-xs font-medium text-red-800 uppercase tracking-wider">Errors</dt>
+                  <dd class="mt-1 text-2xl font-semibold tracking-tight text-red-700">{{ status.status.counts.errors }}</dd>
+                </div>
+              </dl>
+
+              <!-- Running State -->
+              {% if let Some(started) = status.status.current_run_started.as_ref() %}
+              <div class="rounded-md bg-blue-50 p-4 mb-4 border border-blue-100">
+                <div class="flex">
+                  <div class="flex-shrink-0">
+                    <svg class="h-5 w-5 text-blue-400 animate-spin" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                  <div class="ml-3">
+                    <h3 class="text-sm font-medium text-blue-800">Task Currently Running</h3>
+                    <div class="mt-2 text-sm text-blue-700">
+                      <p>Started at {{ started.strftime("%Y-%m-%d %H:%M:%S") }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endif %}
+
+              <!-- Main Output Log -->
+              <div class="relative group">
+                <div class="absolute top-0 right-0 p-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                    <button id="btn-{{ status.label.ident() }}" onclick="copyContent('{{ status.label.ident() }}')" class="text-xs text-white bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded cursor-pointer transition-colors">Copy Output</button>
+                </div>
+                <pre id="log-{{ status.label.ident() }}" class="block w-full rounded-md border border-gray-700 bg-gray-900 text-gray-100 p-4 text-sm font-mono overflow-x-auto shadow-inner min-h-[5rem]">{{ status.status.last_result.value.as_ref().as_str() }}</pre>
+              </div>
+
+              <!-- Retry Error Log -->
+              {% if let Some(retrying) = status.status.last_retry_error.as_ref() %}
+              <div class="mt-6">
+                <div class="rounded-md bg-red-50 p-4 border border-red-100">
+                  <div class="flex">
+                    <div class="flex-shrink-0">
+                      <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                      </svg>
+                    </div>
+                    <div class="ml-3 w-full">
+                      <h3 class="text-sm font-medium text-red-800">Retry in progress</h3>
+                      <div class="mt-2 text-sm text-red-700">
+                        <p>Last error occurred {{ retrying.updated.strftime("%Y-%m-%d %H:%M:%S") }}</p>
+                        <div class="mt-2 rounded-md bg-red-100 p-3 overflow-x-auto">
+                            <pre class="text-xs font-mono text-red-900">{{ retrying.value }}</pre>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endif %}
+
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        
+        <footer class="mt-12 text-center text-sm text-gray-500 pb-8">
+            <p>&copy; <a href="https://github.com/fpco/job-watcher" class="hover:underline" target="_blank" rel="noopener noreferrer">Job Watcher</a> - {{ title }}</p>
+        </footer>
+
+      </main>
     </div>
+    <script>
+      function copyContent(id) {
+        const el = document.getElementById('log-' + id);
+        if (!el) return;
+        const text = el.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          const btn = document.getElementById('btn-' + id);
+          if (btn) {
+             const originalText = btn.innerText;
+             btn.innerText = 'Copied!';
+             btn.classList.add('bg-green-600');
+             btn.classList.remove('bg-gray-700', 'hover:bg-gray-600');
+             setTimeout(() => {
+               btn.innerText = originalText;
+               btn.classList.remove('bg-green-600');
+               btn.classList.add('bg-gray-700', 'hover:bg-gray-600');
+             }, 2000);
+          }
+        }).catch(err => {
+          console.error('Failed to copy: ', err);
+        });
+      }
+    </script>
   </body>
 </html>

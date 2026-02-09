@@ -30,18 +30,18 @@ use axum::{
     http::{self, HeaderValue},
     response::IntoResponse,
 };
-use chrono::{DateTime, Duration, Utc};
 use config::{Delay, WatcherConfig};
+use jiff::{Span, Zoned};
 use rand::Rng;
-use std::fmt::Write;
 use std::{borrow::Cow, collections::HashMap, fmt::Display, pin::Pin, sync::Arc, time::Instant};
+use std::{convert::Infallible, fmt::Write};
 use tokio::{net::TcpListener, sync::RwLock, task::JoinSet};
 
 pub trait WatcherAppContext {
     fn title(&self) -> String;
     fn environment(&self) -> Option<String>;
     fn build_version(&self) -> Option<String>;
-    fn live_since(&self) -> DateTime<Utc>;
+    fn live_since(&self) -> Zoned;
     fn watcher_config(&self) -> WatcherConfig;
     fn triggers_alert(&self, label: &TaskLabel, selected_label: Option<&TaskLabel>) -> bool;
     fn show_output(&self, label: &TaskLabel) -> bool;
@@ -52,7 +52,6 @@ pub trait WatcherAppContext {
 )]
 #[serde(transparent)]
 pub struct TaskLabel(String);
-
 impl TaskLabel {
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
@@ -70,7 +69,8 @@ impl Display for TaskLabel {
 }
 
 struct ToSpawn {
-    future: Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>,
+    /// This future is expected to be an infinite loop and never return Ok.
+    future: Pin<Box<dyn std::future::Future<Output = Result<Infallible>> + Send>>,
     label: TaskLabel,
 }
 
@@ -98,7 +98,7 @@ impl TaskResultValue {
 #[serde(rename_all = "kebab-case")]
 pub struct TaskResult {
     pub value: Arc<TaskResultValue>,
-    pub updated: DateTime<Utc>,
+    pub updated: Zoned,
 }
 
 #[derive(Clone, serde::Serialize, Debug)]
@@ -106,19 +106,7 @@ pub struct TaskResult {
 pub struct TaskError {
     #[serde(skip)]
     pub value: Arc<String>,
-    pub updated: DateTime<Utc>,
-}
-
-impl TaskResult {
-    fn since(&self) -> Since {
-        Since(self.updated)
-    }
-}
-
-impl TaskError {
-    fn since(&self) -> Since {
-        Since(self.updated)
-    }
+    pub updated: Zoned,
 }
 
 #[derive(Clone, Copy, Default, serde::Serialize, Debug)]
@@ -140,10 +128,10 @@ impl TaskCounts {
 pub struct TaskStatus {
     pub last_result: TaskResult,
     pub last_retry_error: Option<TaskError>,
-    pub current_run_started: Option<DateTime<Utc>>,
+    pub current_run_started: Option<Zoned>,
     /// Is the last_result out of date ?
     #[serde(skip)]
-    pub out_of_date: Option<Duration>,
+    pub out_of_date: Option<Span>,
     /// Should we expire the status of last result ?
     #[serde(skip)]
     pub expire_last_result: Option<(std::time::Duration, Instant)>,
@@ -153,16 +141,10 @@ pub struct TaskStatus {
 
 pub(crate) type StatusMap = HashMap<TaskLabel, Arc<RwLock<TaskStatus>>>;
 
-enum StoppedTask {
-    Background,
-    Periodic(TaskLabel),
-    RestApi,
-}
-
 #[derive(Default)]
 pub(crate) struct Watcher {
     to_spawn: Vec<ToSpawn>,
-    set: JoinSet<Result<StoppedTask>>,
+    set: JoinSet<Result<Infallible>>,
     statuses: StatusMap,
 }
 
@@ -237,10 +219,55 @@ struct StatusTemplate<'a> {
     statuses: Vec<RenderedStatus>,
     env: Cow<'a, str>,
     build_version: Cow<'a, str>,
-    live_since: DateTime<Utc>,
-    now: DateTime<Utc>,
+    live_since: Zoned,
+    now: Zoned,
     alert: bool,
     title: String,
+}
+
+impl<'a> StatusTemplate<'a> {
+    fn live_since_human(&self) -> String {
+        let duration = self.now.duration_since(&self.live_since);
+        let secs = duration.as_secs();
+
+        if secs < 0 {
+            return "In the future".to_string();
+        }
+        if secs == 0 {
+            return "just now".to_string();
+        }
+
+        let minutes = secs / 60;
+        let secs_rem = secs % 60;
+        let hours = minutes / 60;
+        let minutes_rem = minutes % 60;
+        let days = hours / 24;
+        let hours_rem = hours % 24;
+
+        let mut result = String::new();
+        let mut need_space = false;
+
+        for (number, letter) in [
+            (days, "d"),
+            (hours_rem, "h"),
+            (minutes_rem, "m"),
+            (secs_rem, "s"),
+        ] {
+            if number > 0 {
+                if need_space {
+                    result.push(' ');
+                }
+                result.push_str(&format!("{}{}", number, letter));
+                need_space = true;
+            }
+        }
+
+        if result.is_empty() {
+            "0s".to_string()
+        } else {
+            result
+        }
+    }
 }
 
 impl TaskStatuses {
@@ -251,12 +278,13 @@ impl TaskStatuses {
     ) -> StatusTemplate<'a> {
         let statuses = self.statuses(app, label).await;
         let alert = statuses.iter().any(|x| x.short.alert());
+        let now = Zoned::now();
 
         StatusTemplate {
             statuses,
             env: app.environment().unwrap_or("Unknown".to_owned()).into(),
             build_version: app.build_version().unwrap_or("Unknown".to_owned()).into(),
-            now: Utc::now(),
+            now,
             alert,
             live_since: app.live_since(),
             title: app.title(),
@@ -457,11 +485,11 @@ impl TaskStatus {
     }
 
     fn is_out_of_date(&self) -> OutOfDateType {
-        match self.current_run_started {
+        match &self.current_run_started {
             Some(started) => match self.out_of_date {
                 Some(out_of_date) => {
-                    let now = Utc::now();
-                    if started + Duration::seconds(300) <= now {
+                    let now = Zoned::now();
+                    if started.clone() + Span::new().seconds(300) <= now {
                         OutOfDateType::Very
                     } else if started + out_of_date <= now {
                         OutOfDateType::Slightly
@@ -509,42 +537,6 @@ impl TaskStatus {
     }
 }
 
-struct Since(DateTime<Utc>);
-
-impl Display for Since {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        let duration = Utc::now().signed_duration_since(self.0);
-        let secs = duration.num_seconds();
-
-        match secs.cmp(&0) {
-            std::cmp::Ordering::Less => write!(f, "{}", self.0),
-            std::cmp::Ordering::Equal => write!(f, "just now ({})", self.0),
-            std::cmp::Ordering::Greater => {
-                let minutes = secs / 60;
-                let secs = secs % 60;
-                let hours = minutes / 60;
-                let minutes = minutes % 60;
-                let days = hours / 24;
-                let hours = hours % 24;
-
-                let mut need_space = false;
-                for (number, letter) in [(days, 'd'), (hours, 'h'), (minutes, 'm'), (secs, 's')] {
-                    if number > 0 {
-                        if need_space {
-                            write!(f, " {number}{letter}")?;
-                        } else {
-                            need_space = true;
-                            write!(f, "{number}{letter}")?;
-                        }
-                    }
-                }
-
-                write!(f, " ({})", self.0)
-            }
-        }
-    }
-}
-
 pub struct AppBuilder<C> {
     pub app: Arc<C>,
     pub(crate) watcher: Watcher,
@@ -556,23 +548,18 @@ impl Watcher {
         app: Arc<C>,
         listener: TcpListener,
     ) -> Result<()> {
-        self.set.spawn(async {
-            rest_api::start_rest_api(
-                app,
-                TaskStatuses {
-                    statuses: Arc::new(self.statuses),
-                },
-                listener,
-            )
-            .await?;
-            Ok(StoppedTask::RestApi)
-        });
+        self.set.spawn(rest_api::start_rest_api(
+            app,
+            TaskStatuses {
+                statuses: Arc::new(self.statuses),
+            },
+            listener,
+        ));
         for ToSpawn { future, label } in self.to_spawn {
             self.set.spawn(async move {
                 future
                     .await
-                    .with_context(|| format!("Failure while running: {label}"))?;
-                Ok(StoppedTask::Periodic(label))
+                    .with_context(|| format!("Task failed: {}", label))
             });
         }
         if let Some(res) = self.set.join_next().await {
@@ -581,14 +568,9 @@ impl Watcher {
                     self.set.abort_all();
                     return Err(e);
                 }
-                Ok(task) => {
-                    self.set.abort_all();
-                    let task_label = match task {
-                        StoppedTask::Background => "background task".into(),
-                        StoppedTask::Periodic(task_label) => format!("task tracking {task_label}"),
-                        StoppedTask::RestApi => "REST API".into(),
-                    };
-                    anyhow::bail!("Unexpected finish of {task_label}")
+                Ok(_task) => {
+                    // This branch is impossible, as Infallible can't be created.
+                    anyhow::bail!("Impossible: Infallible witnessed!")
                 }
             }
         }
@@ -692,12 +674,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
     /// Watch a background job that runs continuously, launched immediately
     pub fn watch_background<Fut>(&mut self, task: Fut)
     where
-        Fut: std::future::Future<Output = Result<()>> + Send + 'static,
+        Fut: std::future::Future<Output = Result<Infallible>> + Send + 'static,
     {
-        self.watcher.set.spawn(async {
-            task.await?;
-            Ok(StoppedTask::Background)
-        });
+        self.watcher.set.spawn(task);
     }
 
     pub fn watch_periodic<T>(&mut self, label: TaskLabel, mut task: T) -> Result<()>
@@ -717,11 +696,11 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
         let config = task_config_for(&self.app.watcher_config(), &label);
         let out_of_date = config
             .out_of_date
-            .map(|item| chrono::Duration::seconds(item.into()));
+            .map(|seconds| Span::new().seconds(seconds));
         let task_status = Arc::new(RwLock::new(TaskStatus {
             last_result: TaskResult {
                 value: TaskResultValue::NotYetRun.into(),
-                updated: Utc::now(),
+                updated: Zoned::now(),
             },
             last_retry_error: None,
             current_run_started: None,
@@ -750,7 +729,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                     *guard = TaskStatus {
                         last_result: old.last_result.clone(),
                         last_retry_error: old.last_retry_error.clone(),
-                        current_run_started: Some(Utc::now()),
+                        current_run_started: Some(Zoned::now()),
                         out_of_date,
                         counts: old.counts,
                         expire_last_result: old.expire_last_result,
@@ -801,9 +780,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                 }
                             }
                             let last_run_seconds = {
-                                if let Some(old_run_started) = old.current_run_started {
-                                    let duration = Utc::now() - old_run_started;
-                                    Some(duration.num_seconds())
+                                if let Some(old_run_started) = old.current_run_started.clone() {
+                                    let duration = Zoned::now() - old_run_started;
+                                    Some(duration.get_seconds())
                                 } else {
                                     None
                                 }
@@ -817,7 +796,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                     } else {
                                         TaskResultValue::Ok(message).into()
                                     },
-                                    updated: Utc::now(),
+                                    updated: Zoned::now(),
                                 },
                                 last_retry_error: None,
                                 current_run_started: None,
@@ -875,9 +854,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                             let mut guard = task_status.write().await;
                             let old = &*guard;
                             let last_run_seconds = {
-                                if let Some(old_run_started) = old.current_run_started {
-                                    let duration = Utc::now() - old_run_started;
-                                    Some(duration.num_seconds())
+                                if let Some(old_run_started) = old.current_run_started.clone() {
+                                    let duration = Zoned::now() - old_run_started;
+                                    Some(duration.get_seconds())
                                 } else {
                                     None
                                 }
@@ -905,7 +884,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                             *guard = TaskStatus {
                                 last_result: TaskResult {
                                     value: TaskResultValue::Err(new_error_message).into(),
-                                    updated: Utc::now(),
+                                    updated: Zoned::now(),
                                 },
                                 last_retry_error: None,
                                 current_run_started: None,
@@ -922,9 +901,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                 let mut guard = task_status.write().await;
                                 let old = &*guard;
                                 let last_run_seconds = {
-                                    if let Some(old_run_started) = old.current_run_started {
-                                        let duration = Utc::now() - old_run_started;
-                                        Some(duration.num_seconds())
+                                    if let Some(old_run_started) = old.current_run_started.clone() {
+                                        let duration = Zoned::now() - old_run_started;
+                                        Some(duration.get_seconds())
                                     } else {
                                         None
                                     }
@@ -933,7 +912,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                     last_result: old.last_result.clone(),
                                     last_retry_error: Some(TaskError {
                                         value: format!("{err:?}").into(),
-                                        updated: Utc::now(),
+                                        updated: Zoned::now(),
                                     }),
                                     current_run_started: None,
                                     out_of_date,

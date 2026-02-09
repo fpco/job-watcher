@@ -1,5 +1,5 @@
 use anyhow::{Result, bail};
-use chrono::{DateTime, Utc};
+use jiff::Zoned;
 use job_watcher::{
     AppBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
     config::{Delay, TaskConfig, WatcherConfig},
@@ -16,7 +16,7 @@ struct LeaderBoard;
 struct TaskTwo;
 
 #[derive(Clone)]
-struct DummyApp;
+struct DummyApp(Zoned);
 
 impl DummyApp {
     async fn start() -> Result<()> {
@@ -24,7 +24,7 @@ impl DummyApp {
         println!("Starting leaderboard watcher example.");
         println!("The watcher will run, but the status page is not served in this example.");
 
-        let app = Arc::new(DummyApp);
+        let app = Arc::new(DummyApp(Zoned::now()));
         let mut builder = AppBuilder::new(app.clone());
 
         builder.watch_periodic(TaskLabel::new("leaderboard"), LeaderBoard)?;
@@ -39,8 +39,8 @@ impl WatcherAppContext for DummyApp {
         Some("test-env".to_string())
     }
 
-    fn live_since(&self) -> DateTime<Utc> {
-        Utc::now()
+    fn live_since(&self) -> Zoned {
+        self.0.clone()
     }
 
     fn watcher_config(&self) -> WatcherConfig {
@@ -68,11 +68,7 @@ impl WatcherAppContext for DummyApp {
 
     fn triggers_alert(&self, label: &TaskLabel, _selected_label: Option<&TaskLabel>) -> bool {
         // In a real app, you might have different logic for different tasks.
-        if label.ident() == "leaderboard" {
-            false
-        } else {
-            true
-        }
+        label.ident() != "leaderboard"
     }
 
     fn show_output(&self, _label: &TaskLabel) -> bool {
@@ -80,7 +76,7 @@ impl WatcherAppContext for DummyApp {
     }
 
     fn build_version(&self) -> Option<String> {
-        Some("dfa2test".to_owned())
+        Some("dfa2testdkafjakfjakjkafjkafjakfjkajkajkajk".to_owned())
     }
 
     fn title(&self) -> String {
