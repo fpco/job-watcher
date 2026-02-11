@@ -12,8 +12,8 @@
       body {
         font-family: 'Inter', sans-serif;
       }
-      
-      /* 
+
+      /*
          Compatibility Layer for Backend Classes
          The Rust backend returns specific class names like 'link-danger', 'text-red-400', etc.
          We map these to Tailwind values or custom styles here to ensure they look good.
@@ -47,8 +47,8 @@
         color: #1d4ed8; /* blue-700 */
       }
 
-      /* 
-         Red Shade Mapping 
+      /*
+         Red Shade Mapping
          The backend uses text-red-100 to text-red-800.
          We map them to standard Tailwind colors, ensuring visibility.
       */
@@ -73,7 +73,7 @@
   </head>
   <body class="h-full text-gray-900 antialiased">
     <div class="min-h-full">
-      
+
       <!-- Header -->
       <header class="bg-white shadow-sm sticky top-0 z-10">
         <div class="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8 flex items-center justify-between">
@@ -83,7 +83,7 @@
       </header>
 
       <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        
+
         <!-- Environment Stats -->
         <div class="grid grid-cols-1 gap-5 sm:grid-cols-3 lg:grid-cols-3 mb-8">
           <div class="overflow-hidden rounded-lg bg-white shadow px-4 py-5 sm:p-6 border-l-4 border-blue-500">
@@ -138,7 +138,7 @@
           {% for status in statuses %}
           <div id="{{ status.label.ident() }}" class="overflow-hidden bg-white shadow-lg sm:rounded-lg border border-gray-100 scroll-mt-20">
             <!-- Card Header -->
-            <div class="px-4 py-5 sm:px-6 border-b border-gray-200 bg-gray-50/50 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200 {% if status.status.last_result.value.is_info() %}bg-blue-50/50{% else %}bg-gray-50/50{% endif %} flex flex-col sm:flex-row justify-between sm:items-center gap-4">
               <div>
                 <h3 class="text-lg font-semibold leading-6 text-gray-900 flex items-center gap-2">
                    {{ status.label }}
@@ -156,8 +156,9 @@
             </div>
 
             <div class="px-4 py-5 sm:p-6">
-              
+
               <!-- Stats Row -->
+              {% if status.status.last_result.value.is_info() == false %}
               <dl class="grid grid-cols-1 gap-5 sm:grid-cols-3 mb-6">
                 <div class="overflow-hidden rounded-lg bg-green-50 px-4 py-3 sm:p-4 text-center">
                   <dt class="truncate text-xs font-medium text-green-800 uppercase tracking-wider">Successes</dt>
@@ -172,6 +173,7 @@
                   <dd class="mt-1 text-2xl font-semibold tracking-tight text-red-700">{{ status.status.counts.errors }}</dd>
                 </div>
               </dl>
+              {% endif %}
 
               <!-- Running State -->
               {% if let Some(started) = status.status.current_run_started.as_ref() %}
@@ -229,7 +231,7 @@
           </div>
           {% endfor %}
         </div>
-        
+
         <footer class="mt-12 text-center text-sm text-gray-500 pb-8">
             <p>&copy; <a href="https://github.com/fpco/job-watcher" class="hover:underline" target="_blank" rel="noopener noreferrer">Job Watcher</a> - {{ title }}</p>
         </footer>

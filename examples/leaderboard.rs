@@ -4,7 +4,7 @@ use job_watcher::{
     AppBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
     config::{Delay, TaskConfig, WatcherConfig},
 };
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -29,6 +29,7 @@ impl DummyApp {
 
         builder.watch_periodic(TaskLabel::new("leaderboard"), LeaderBoard)?;
         builder.watch_periodic(TaskLabel::new("task_two"), TaskTwo)?;
+        builder.watch_background_with_status(TaskLabel::new("task_three"), run_task_three)?;
 
         builder.wait(listener).await
     }
@@ -124,4 +125,16 @@ async fn update_task_two() -> Result<WatchedTaskOutput> {
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     println!("Finished executing task two.");
     Ok(WatchedTaskOutput::new("Finished executing task two"))
+}
+
+async fn run_task_three(_app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Infallible> {
+    let mut i = 1;
+    loop {
+        println!("task three");
+        heartbeat
+            .set_status(format!("Status from task three {i}"))
+            .await;
+        i += 1;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
 }
