@@ -80,6 +80,7 @@ pub enum TaskResultValue {
     Ok(Cow<'static, str>),
     Err(String),
     NotYetRun,
+    Info(Cow<'static, str>),
 }
 
 const NOT_YET_RUN_MESSAGE: &str = "Task has not yet completed a single run";
@@ -90,6 +91,7 @@ impl TaskResultValue {
             TaskResultValue::Ok(s) => s,
             TaskResultValue::Err(s) => s,
             TaskResultValue::NotYetRun => NOT_YET_RUN_MESSAGE,
+            TaskResultValue::Info(s) => s,
         }
     }
 }
@@ -436,6 +438,7 @@ impl ResponseBuilder {
                 writeln!(&mut self.buffer, "{err}")?;
             }
             TaskResultValue::NotYetRun => writeln!(&mut self.buffer, "{}", NOT_YET_RUN_MESSAGE)?,
+            TaskResultValue::Info(cow) => writeln!(&mut self.buffer, "{cow}")?,
         }
         writeln!(&mut self.buffer)?;
 
@@ -510,7 +513,7 @@ impl TaskStatus {
         selected_label: Option<&TaskLabel>,
     ) -> ShortStatus {
         match self.last_result.value.as_ref() {
-            TaskResultValue::Ok(_) => {
+            TaskResultValue::Ok(_) | TaskResultValue::Info(_) => {
                 match (
                     self.is_out_of_date(),
                     app.triggers_alert(label, selected_label),
@@ -580,6 +583,16 @@ impl Watcher {
 
 pub struct Heartbeat {
     pub task_status: Arc<RwLock<TaskStatus>>,
+}
+
+impl Heartbeat {
+    pub async fn set_status(&self, message: impl Into<Cow<'static, str>>) {
+        let mut guard = self.task_status.write().await;
+        guard.last_result = TaskResult {
+            value: TaskResultValue::Info(message.into()).into(),
+            updated: Zoned::now(),
+        };
+    }
 }
 
 #[derive(Debug)]
@@ -684,8 +697,9 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
     /// This is similar to `watch_background`, but it also registers the task
     /// with the status monitoring page. The provided closure is given a
     /// `Heartbeat` instance that can be used to update the task's status.
-    pub fn watch_background_with_status<Fut>(&mut self, label: TaskLabel, task: Fut) -> Result<()>
+    pub fn watch_background_with_status<F, Fut>(&mut self, label: TaskLabel, f: F) -> Result<()>
     where
+        F: FnOnce(Heartbeat) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<Infallible>> + Send + 'static,
     {
         let task_status = Arc::new(RwLock::new(TaskStatus {
@@ -709,8 +723,10 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                 anyhow::bail!("Two tasks with label {label:?}");
             }
         }
+        let heartbeat = Heartbeat { task_status };
+        let future = f(heartbeat);
         self.watcher.set.spawn(async move {
-            task
+            future
                 .await
                 .with_context(|| format!("Background task failed: {}", label))
         });
@@ -815,6 +831,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                     TaskResultValue::NotYetRun => {
                                         // Catalog newly started
                                     }
+                                    TaskResultValue::Info(_cow) => {}
                                 }
                             }
                             let last_run_seconds = {
