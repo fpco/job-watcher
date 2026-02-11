@@ -94,6 +94,10 @@ impl TaskResultValue {
             TaskResultValue::Info(s) => s,
         }
     }
+
+    pub fn is_info(&self) -> bool {
+        matches!(self, TaskResultValue::Info(_))
+    }
 }
 
 #[derive(Clone, serde::Serialize, Debug)]
@@ -165,6 +169,7 @@ enum ShortStatus {
     OutOfDateNoAlert,
     Success,
     NotYetRun,
+    Info,
 }
 
 impl ShortStatus {
@@ -177,6 +182,7 @@ impl ShortStatus {
             ShortStatus::Error => "ERROR",
             ShortStatus::ErrorNoAlert => "ERROR (no alert)",
             ShortStatus::NotYetRun => "NOT YET RUN",
+            ShortStatus::Info => "RUNNING",
         }
     }
 
@@ -189,6 +195,7 @@ impl ShortStatus {
             ShortStatus::OutOfDateNoAlert => false,
             ShortStatus::Success => false,
             ShortStatus::NotYetRun => false,
+            ShortStatus::Info => false,
         }
     }
 
@@ -201,6 +208,7 @@ impl ShortStatus {
             ShortStatus::OutOfDateNoAlert => "text-red-300",
             ShortStatus::Success => "link-success",
             ShortStatus::NotYetRun => "link-primary",
+            ShortStatus::Info => "link-primary",
         }
     }
 }
@@ -513,12 +521,23 @@ impl TaskStatus {
         selected_label: Option<&TaskLabel>,
     ) -> ShortStatus {
         match self.last_result.value.as_ref() {
-            TaskResultValue::Ok(_) | TaskResultValue::Info(_) => {
+            TaskResultValue::Ok(_) => {
                 match (
                     self.is_out_of_date(),
                     app.triggers_alert(label, selected_label),
                 ) {
                     (OutOfDateType::Not, _) => ShortStatus::Success,
+                    (_, false) => ShortStatus::OutOfDateNoAlert,
+                    (OutOfDateType::Slightly, true) => ShortStatus::OutOfDate,
+                    (OutOfDateType::Very, true) => ShortStatus::OutOfDateError,
+                }
+            }
+            TaskResultValue::Info(_) => {
+                match (
+                    self.is_out_of_date(),
+                    app.triggers_alert(label, selected_label),
+                ) {
+                    (OutOfDateType::Not, _) => ShortStatus::Info,
                     (_, false) => ShortStatus::OutOfDateNoAlert,
                     (OutOfDateType::Slightly, true) => ShortStatus::OutOfDate,
                     (OutOfDateType::Very, true) => ShortStatus::OutOfDateError,
