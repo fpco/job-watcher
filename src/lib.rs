@@ -718,7 +718,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
     /// `Heartbeat` instance that can be used to update the task's status.
     pub fn watch_background_with_status<F, Fut>(&mut self, label: TaskLabel, f: F) -> Result<()>
     where
-        F: FnOnce(Heartbeat) -> Fut + Send + 'static,
+        F: FnOnce(Arc<C>, Heartbeat) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<Infallible>> + Send + 'static,
     {
         let task_status = Arc::new(RwLock::new(TaskStatus {
@@ -743,7 +743,8 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
             }
         }
         let heartbeat = Heartbeat { task_status };
-        let future = f(heartbeat);
+        let app = self.app.clone();
+        let future = f(app, heartbeat);
         self.watcher.set.spawn(async move {
             future
                 .await

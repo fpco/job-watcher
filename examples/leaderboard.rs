@@ -127,7 +127,7 @@ async fn update_task_two() -> Result<WatchedTaskOutput> {
     Ok(WatchedTaskOutput::new("Finished executing task two"))
 }
 
-async fn run_task_three(heartbeat: Heartbeat) -> Result<Infallible> {
+async fn run_task_three(_app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Infallible> {
     let mut i = 1;
     loop {
         println!("task three");
