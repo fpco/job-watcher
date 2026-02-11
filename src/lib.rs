@@ -679,6 +679,44 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
         self.watcher.set.spawn(task);
     }
 
+    /// Watch a background job that runs continuously, with status reporting.
+    ///
+    /// This is similar to `watch_background`, but it also registers the task
+    /// with the status monitoring page. The provided closure is given a
+    /// `Heartbeat` instance that can be used to update the task's status.
+    pub fn watch_background_with_status<Fut>(&mut self, label: TaskLabel, task: Fut) -> Result<()>
+    where
+        Fut: std::future::Future<Output = Result<Infallible>> + Send + 'static,
+    {
+        let task_status = Arc::new(RwLock::new(TaskStatus {
+            last_result: TaskResult {
+                value: TaskResultValue::NotYetRun.into(),
+                updated: Zoned::now(),
+            },
+            last_retry_error: None,
+            current_run_started: Some(Zoned::now()),
+            out_of_date: None,
+            counts: Default::default(),
+            expire_last_result: None,
+            last_run_seconds: None,
+        }));
+        {
+            let old = self
+                .watcher
+                .statuses
+                .insert(label.clone(), task_status.clone());
+            if old.is_some() {
+                anyhow::bail!("Two tasks with label {label:?}");
+            }
+        }
+        self.watcher.set.spawn(async move {
+            task
+                .await
+                .with_context(|| format!("Background task failed: {}", label))
+        });
+        Ok(())
+    }
+
     pub fn watch_periodic<T>(&mut self, label: TaskLabel, mut task: T) -> Result<()>
     where
         T: WatchedTask<C>,
