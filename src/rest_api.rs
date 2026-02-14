@@ -1,9 +1,9 @@
-use std::{convert::Infallible, sync::Arc};
+use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use axum::{
     extract::{Path, State},
-    http::{self, HeaderMap, header},
+    http::{self, HeaderMap, StatusCode, header},
     response::IntoResponse,
     routing::get,
 };
@@ -12,6 +12,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     cors::CorsLayer,
     limit::RequestBodyLimitLayer,
+    timeout::TimeoutLayer,
     trace::{self, TraceLayer},
 };
 use tracing::Level;
@@ -40,9 +41,10 @@ pub(crate) async fn start_rest_api<C: WatcherAppContext + Send + Sync + Clone + 
                 .on_response(trace::DefaultOnResponse::new().level(Level::INFO)),
         )
         .layer(RequestBodyLimitLayer::new(1_024_000))
-        // .layer(TimeoutLayer::new(std::time::Duration::from_secs(
-        //     5
-        // )))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(3),
+        ))
         .layer(
             CorsLayer::new()
                 .allow_origin(tower_http::cors::Any)
