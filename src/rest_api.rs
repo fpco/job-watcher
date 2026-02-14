@@ -56,9 +56,16 @@ pub(crate) async fn start_rest_api<C: WatcherAppContext + Send + Sync + Clone + 
         .route("/", get(homepage))
         .route("/healthz", get(healthz))
         .route("/status/{*label}", get(status::single))
-        .route("/status", get(status::all))
+        .route("/status", get(status::all));
+
+    let router = app.extend_router(router);
+
+    let router = router
         .layer(service_builder)
-        .with_state(RestApp { app, statuses });
+        .with_state(RestApp {
+            app: app.clone(),
+            statuses,
+        });
 
     tracing::info!("Launching server");
 
