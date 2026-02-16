@@ -22,9 +22,9 @@
 mod rest_api;
 
 pub mod config;
-mod defaults;
 
 use anyhow::{Context, Result};
+pub use axum;
 use axum::{
     Json,
     http::{self, HeaderValue},
@@ -45,6 +45,12 @@ pub trait WatcherAppContext {
     fn watcher_config(&self) -> WatcherConfig;
     fn triggers_alert(&self, label: &TaskLabel, selected_label: Option<&TaskLabel>) -> bool;
     fn show_output(&self, label: &TaskLabel) -> bool;
+    fn extend_router<S>(&self, router: axum::Router<S>) -> axum::Router<S>
+    where
+        S: Clone + Send + Sync + 'static,
+    {
+        router
+    }
 }
 
 #[derive(

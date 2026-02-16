@@ -1,5 +1,6 @@
 use anyhow::{Result, bail};
 use jiff::Zoned;
+use job_watcher::axum::{Router, extract::State, routing::get};
 use job_watcher::{
     AppBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
     config::{Delay, TaskConfig, WatcherConfig},
@@ -83,6 +84,24 @@ impl WatcherAppContext for DummyApp {
     fn title(&self) -> String {
         "Example application Status".to_owned()
     }
+
+    fn extend_router<S>(&self, router: Router<S>) -> Router<S>
+    where
+        S: Clone + Send + Sync + 'static,
+    {
+        let custom_router = Router::new()
+            .route("/", get(hello_handler))
+            .with_state(HelloState(self.0.clone()));
+
+        router.nest_service("/hello", custom_router)
+    }
+}
+
+#[derive(Clone)]
+struct HelloState(Zoned);
+
+async fn hello_handler(State(state): State<HelloState>) -> String {
+    format!("Hello from custom route! App live since {}", state.0)
 }
 
 impl WatchedTask<DummyApp> for LeaderBoard {
