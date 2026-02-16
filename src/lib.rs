@@ -22,9 +22,9 @@
 mod rest_api;
 
 pub mod config;
-mod defaults;
 
 use anyhow::{Context, Result};
+pub use axum;
 use axum::{
     Json,
     http::{self, HeaderValue},

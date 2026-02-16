@@ -1,4 +1,3 @@
-use crate::defaults;
 use std::collections::HashMap;
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Copy, Debug)]
@@ -38,20 +37,17 @@ pub struct TaskConfig {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct WatcherConfig {
     /// How many times to retry before giving up
-    #[serde(default = "defaults::retries")]
     pub retries: usize,
     /// How many seconds to delay between retries
-    #[serde(default = "defaults::delay_between_retries")]
     pub delay_between_retries: u32,
-    #[serde(default)]
     pub tasks: HashMap<String, TaskConfig>,
 }
 
 impl Default for WatcherConfig {
     fn default() -> Self {
         Self {
-            retries: defaults::retries(),
-            delay_between_retries: defaults::delay_between_retries(),
+            retries: 6,
+            delay_between_retries: 20,
             tasks: Default::default(),
         }
     }
