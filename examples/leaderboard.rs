@@ -31,6 +31,13 @@ impl DummyApp {
         builder.watch_periodic(TaskLabel::new("leaderboard"), LeaderBoard)?;
         builder.watch_periodic(TaskLabel::new("task_two"), TaskTwo)?;
         builder.watch_background_with_status(TaskLabel::new("task_three"), run_task_three)?;
+        builder.watch_background_with_status(TaskLabel::new("task_four"), TaskFour::start)?;
+
+        let task_five = TaskFive(3);
+        builder.watch_background_with_status(
+            TaskLabel::new("task_five"),
+            move |app, heartbeat| async move { task_five.start(app, heartbeat).await },
+        )?;
 
         builder.wait(listener).await
     }
@@ -155,5 +162,37 @@ async fn run_task_three(_app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Inf
             .await;
         i += 1;
         tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+struct TaskFour;
+
+impl TaskFour {
+    pub async fn start(_app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Infallible> {
+        let mut i = 1;
+        loop {
+            println!("task four");
+            heartbeat
+                .set_status(format!("Status from task four {i}"))
+                .await;
+            i += 1;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+}
+
+struct TaskFive(pub u64);
+
+impl TaskFive {
+    pub async fn start(&self, _app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Infallible> {
+        let mut i = self.0;
+        loop {
+            println!("task five");
+            heartbeat
+                .set_status(format!("Status from task five {i}"))
+                .await;
+            i += 1;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
     }
 }
