@@ -922,8 +922,8 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
                                         }
                                     }
                                     TaskResultValue::Err(err) => {
-                                        if !error {
-                                            if let Some(config) = (app.notifier_config().as_ref()) {
+                                        if !error
+                                            && let Some(config) = app.notifier_config().as_ref() {
                                                 config
                                                     .handle_alert(
                                                         &http_client,
@@ -936,11 +936,10 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
                                                     )
                                                     .await;
                                             }
-                                        }
                                     }
                                     TaskResultValue::NotYetRun | TaskResultValue::Info(_) => {
-                                        if error {
-                                            if let Some(config) = (app.notifier_config().as_ref()) {
+                                        if error
+                                            && let Some(config) = app.notifier_config().as_ref() {
                                                 config
                                                     .handle_alert(
                                                         &http_client,
@@ -952,7 +951,6 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
                                                     )
                                                     .await;
                                             }
-                                        }
                                     }
                                 }
                             }
@@ -1049,7 +1047,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
 
                                     // Previous state is a different error.
                                     TaskResultValue::Err(old_error) => {
-                                        if let (Some(config)) = (app.notifier_config().as_ref()) {
+                                        if let Some(config) = app.notifier_config().as_ref() {
                                             config
                                                 .handle_alert(
                                                     &http_client,
@@ -1065,7 +1063,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
                                     }
                                     // Previous state is Ok, now it's an error.
                                     TaskResultValue::Ok(_) => {
-                                        if let (Some(config)) = (app.notifier_config().as_ref()) {
+                                        if let Some(config) = app.notifier_config().as_ref() {
                                             config
                                                 .handle_alert(
                                                     &http_client,
@@ -1080,7 +1078,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
                                     }
                                     // Previous state is unknown (NotYetRun) or Info
                                     TaskResultValue::NotYetRun | TaskResultValue::Info(_) => {
-                                        if let (Some(config)) = (app.notifier_config().as_ref()) {
+                                        if let Some(config) = app.notifier_config().as_ref() {
                                             config
                                                 .handle_alert(
                                                     &http_client,
