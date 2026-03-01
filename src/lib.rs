@@ -14,7 +14,7 @@
 //! # Usage
 //!
 //! 1. Define a context struct that implements `WatcherAppContext`.
-//! 2. Create an `AppBuilder`.
+//! 2. Create a `WatcherBuilder`.
 //! 3. Define your tasks as structs that implement `WatchedTask`.
 //! 4. Register your tasks with `watch_periodic`.
 //! 5. Start the watcher with `wait`.
@@ -565,7 +565,7 @@ impl TaskStatus {
     }
 }
 
-pub struct AppBuilder<C> {
+pub struct WatcherBuilder<C> {
     pub app: Arc<C>,
     pub(crate) watcher: Watcher,
 }
@@ -697,7 +697,7 @@ pub trait WatchedTask<C: Send + Sync + 'static>: Send + Sync + 'static {
     }
 }
 
-impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
+impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
     pub fn new(app: Arc<C>) -> Self {
         Self {
             app,

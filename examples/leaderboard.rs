@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use jiff::Zoned;
 use job_watcher::axum::{Router, extract::State, routing::get};
 use job_watcher::{
-    AppBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
+    WatcherBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
     config::{Delay, TaskConfig, WatcherConfig},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
@@ -26,7 +26,7 @@ impl DummyApp {
         println!("The watcher will run, but the status page is not served in this example.");
 
         let app = Arc::new(DummyApp(Zoned::now()));
-        let mut builder = AppBuilder::new(app.clone());
+        let mut builder = WatcherBuilder::new(app.clone());
 
         builder.watch_periodic(TaskLabel::new("leaderboard"), LeaderBoard)?;
         builder.watch_periodic(TaskLabel::new("task_two"), TaskTwo)?;
