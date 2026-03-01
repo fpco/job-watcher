@@ -1,6 +1,7 @@
 use anyhow::{Result, bail};
 use jiff::Zoned;
 use job_watcher::axum::{Router, extract::State, routing::get};
+use job_watcher::slack::SlackConfig;
 use job_watcher::{
     WatcherBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
     config::{Delay, TaskConfig, WatcherConfig},
@@ -50,6 +51,7 @@ impl WatcherAppContext for DummyApp {
 
     fn watcher_config(&self) -> WatcherConfig {
         let mut config = WatcherConfig::default();
+        config.retries = 0;
         config.tasks.insert(
             "leaderboard".to_string(),
             TaskConfig {
@@ -86,6 +88,11 @@ impl WatcherAppContext for DummyApp {
 
     fn title(&self) -> String {
         "Example application Status".to_owned()
+    }
+
+    fn notifier_config(&self) -> Option<job_watcher::NotifierConfig> {
+        let webhook = std::env::var("HEALTH_CHECK_SLACK_WEBHOOK").ok();
+        webhook.map(|hook| job_watcher::NotifierConfig::Slack(SlackConfig { webhook_url: hook }))
     }
 
     fn extend_router<S>(&self, router: Router<S>) -> Router<S>
@@ -130,23 +137,16 @@ impl WatchedTask<DummyApp> for TaskTwo {
     async fn run_single(
         &mut self,
         _app: Arc<DummyApp>,
-        heartbeat: Heartbeat,
+        _heartbeat: Heartbeat,
     ) -> Result<WatchedTaskOutput> {
-        let total_success = heartbeat.task_status.read().await.counts.successes;
-        if total_success > 3 {
-            println!("Skipping execution of task two");
-            bail!("Skipping!")
+        let random = rand::random_bool(0.5);
+
+        if random {
+            bail!("Some error from server")
         } else {
-            update_task_two().await
+            Ok(WatchedTaskOutput::new("Now succcess"))
         }
     }
-}
-
-async fn update_task_two() -> Result<WatchedTaskOutput> {
-    println!("Executing task two...");
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    println!("Finished executing task two.");
-    Ok(WatchedTaskOutput::new("Finished executing task two"))
 }
 
 async fn run_task_three(_app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Infallible> {
