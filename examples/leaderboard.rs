@@ -48,10 +48,6 @@ impl WatcherAppContext for DummyApp {
         Some("test-env".to_string())
     }
 
-    fn live_since(&self) -> Zoned {
-        self.0.clone()
-    }
-
     fn watcher_config(&self) -> WatcherConfig {
         let mut config = WatcherConfig::default();
         config.tasks.insert(

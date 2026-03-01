@@ -41,7 +41,6 @@ pub trait WatcherAppContext {
     fn title(&self) -> String;
     fn environment(&self) -> Option<String>;
     fn build_version(&self) -> Option<String>;
-    fn live_since(&self) -> Zoned;
     fn watcher_config(&self) -> WatcherConfig;
     fn triggers_alert(&self, label: &TaskLabel, selected_label: Option<&TaskLabel>) -> bool;
     fn show_output(&self, label: &TaskLabel) -> bool;
@@ -160,9 +159,10 @@ pub(crate) struct Watcher {
     statuses: StatusMap,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub(crate) struct TaskStatuses {
     statuses: Arc<StatusMap>,
+    live_since: Zoned,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, Debug)]
@@ -302,7 +302,7 @@ impl TaskStatuses {
             build_version: app.build_version().unwrap_or("Unknown".to_owned()).into(),
             now,
             alert,
-            live_since: app.live_since(),
+            live_since: self.live_since.clone(),
             title: app.title(),
         }
     }
@@ -568,6 +568,7 @@ impl TaskStatus {
 pub struct WatcherBuilder<C> {
     pub app: Arc<C>,
     pub(crate) watcher: Watcher,
+    live_since: Zoned,
 }
 
 impl Watcher {
@@ -575,11 +576,13 @@ impl Watcher {
         mut self,
         app: Arc<C>,
         listener: TcpListener,
+        live_since: Zoned,
     ) -> Result<()> {
         self.set.spawn(rest_api::start_rest_api(
             app,
             TaskStatuses {
                 statuses: Arc::new(self.statuses),
+                live_since,
             },
             listener,
         ));
@@ -702,11 +705,12 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
         Self {
             app,
             watcher: Default::default(),
+            live_since: Zoned::now(),
         }
     }
 
     pub async fn wait(self, listener: TcpListener) -> Result<()> {
-        self.watcher.wait(self.app, listener).await
+        self.watcher.wait(self.app, listener, self.live_since).await
     }
 
     /// Watch a background job that runs continuously, launched immediately
