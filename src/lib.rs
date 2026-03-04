@@ -14,7 +14,7 @@
 //! # Usage
 //!
 //! 1. Define a context struct that implements `WatcherAppContext`.
-//! 2. Create an `AppBuilder`.
+//! 2. Create a `WatcherBuilder`.
 //! 3. Define your tasks as structs that implement `WatchedTask`.
 //! 4. Register your tasks with `watch_periodic`.
 //! 5. Start the watcher with `wait`.
@@ -22,6 +22,7 @@
 mod rest_api;
 
 pub mod config;
+pub mod slack;
 
 use anyhow::{Context, Result};
 pub use axum;
@@ -33,17 +34,42 @@ use axum::{
 use config::{Delay, WatcherConfig};
 use jiff::{Span, Zoned};
 use rand::Rng;
+use reqwest::Client;
 use std::{borrow::Cow, collections::HashMap, fmt::Display, pin::Pin, sync::Arc, time::Instant};
 use std::{convert::Infallible, fmt::Write};
 use tokio::{net::TcpListener, sync::RwLock, task::JoinSet};
+
+use crate::slack::SlackConfig;
+
+#[derive(Debug)]
+pub enum Alert {
+    /// A task was previously successful, but is now failing.
+    Down { task: TaskLabel, error: String },
+    /// A task was previously failing, but has now recovered.
+    Recovered {
+        task: TaskLabel,
+        old_error: String,
+        new_message: String,
+    },
+    /// A task was failing, and is still failing but with a different error.
+    NewFailure {
+        task: TaskLabel,
+        old_error: String,
+        new_error: String,
+    },
+    /// A task has failed for the first time.
+    FirstFailure { task: TaskLabel, error: String },
+}
 
 pub trait WatcherAppContext {
     fn title(&self) -> String;
     fn environment(&self) -> Option<String>;
     fn build_version(&self) -> Option<String>;
-    fn live_since(&self) -> Zoned;
     fn watcher_config(&self) -> WatcherConfig;
     fn triggers_alert(&self, label: &TaskLabel, selected_label: Option<&TaskLabel>) -> bool;
+    fn notifier_config(&self) -> Option<NotifierConfig> {
+        None
+    }
     fn show_output(&self, label: &TaskLabel) -> bool;
     fn extend_router<S>(&self, router: axum::Router<S>) -> axum::Router<S>
     where
@@ -129,12 +155,6 @@ pub struct TaskCounts {
     pub errors: usize,
 }
 
-impl TaskCounts {
-    fn total(&self) -> usize {
-        self.successes + self.retries + self.errors
-    }
-}
-
 #[derive(Clone, serde::Serialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct TaskStatus {
@@ -160,9 +180,27 @@ pub(crate) struct Watcher {
     statuses: StatusMap,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub(crate) struct TaskStatuses {
     statuses: Arc<StatusMap>,
+    live_since: Zoned,
+}
+
+#[derive(Clone)]
+pub enum NotifierConfig {
+    Slack(SlackConfig),
+}
+
+impl NotifierConfig {
+    async fn handle_alert<C: WatcherAppContext>(&self, client: &Client, alert: Alert, app: &C) {
+        match self {
+            NotifierConfig::Slack(config) => {
+                if let Err(e) = config.handle_alert(client, alert, app).await {
+                    tracing::error!("Failed to send slack alert: {e:?}");
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, Debug)]
@@ -302,7 +340,7 @@ impl TaskStatuses {
             build_version: app.build_version().unwrap_or("Unknown".to_owned()).into(),
             now,
             alert,
-            live_since: app.live_since(),
+            live_since: self.live_since.clone(),
             title: app.title(),
         }
     }
@@ -565,9 +603,11 @@ impl TaskStatus {
     }
 }
 
-pub struct AppBuilder<C> {
+pub struct WatcherBuilder<C> {
     pub app: Arc<C>,
     pub(crate) watcher: Watcher,
+    live_since: Zoned,
+    http: Option<Client>,
 }
 
 impl Watcher {
@@ -575,11 +615,13 @@ impl Watcher {
         mut self,
         app: Arc<C>,
         listener: TcpListener,
+        live_since: Zoned,
     ) -> Result<()> {
         self.set.spawn(rest_api::start_rest_api(
             app,
             TaskStatuses {
                 statuses: Arc::new(self.statuses),
+                live_since,
             },
             listener,
         ));
@@ -697,16 +739,23 @@ pub trait WatchedTask<C: Send + Sync + 'static>: Send + Sync + 'static {
     }
 }
 
-impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
+impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
     pub fn new(app: Arc<C>) -> Self {
         Self {
             app,
             watcher: Default::default(),
+            live_since: Zoned::now(),
+            http: None,
         }
     }
 
+    pub fn with_http_client(mut self, client: Client) -> Self {
+        self.http = Some(client);
+        self
+    }
+
     pub async fn wait(self, listener: TcpListener) -> Result<()> {
-        self.watcher.wait(self.app, listener).await
+        self.watcher.wait(self.app, listener, self.live_since).await
     }
 
     /// Watch a background job that runs continuously, launched immediately
@@ -799,6 +848,10 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
             }
         }
         let app = self.app.clone();
+        let http_client = match &self.http {
+            Some(client) => client.clone(),
+            None => Client::new(),
+        };
         let future = Box::pin(async move {
             // let mut last_seen_block_height = 0;
             let mut retries = 0;
@@ -848,16 +901,53 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                     TaskResultValue::Ok(_) => {
                                         if error {
                                             // Was a success, but not a success now
-                                            // todo: send pagerduty triggers.
+                                            if let Some(config) = app.notifier_config().as_ref() {
+                                                config
+                                                    .handle_alert(
+                                                        &http_client,
+                                                        Alert::Down {
+                                                            task: label.clone(),
+                                                            error: message.to_string(),
+                                                        },
+                                                        &*app,
+                                                    )
+                                                    .await;
+                                            }
                                         }
                                     }
-                                    TaskResultValue::Err(_err) => {
-                                        // todo: Send a pager duty trigger with recovered
+                                    TaskResultValue::Err(err) => {
+                                        if !error
+                                            && let Some(config) = app.notifier_config().as_ref()
+                                        {
+                                            config
+                                                .handle_alert(
+                                                    &http_client,
+                                                    Alert::Recovered {
+                                                        task: label.clone(),
+                                                        old_error: err.to_string(),
+                                                        new_message: message.to_string(),
+                                                    },
+                                                    &*app,
+                                                )
+                                                .await;
+                                        }
                                     }
-                                    TaskResultValue::NotYetRun => {
-                                        // Catalog newly started
+                                    TaskResultValue::NotYetRun | TaskResultValue::Info(_) => {
+                                        if error
+                                            && let Some(config) = app.notifier_config().as_ref()
+                                        {
+                                            config
+                                                .handle_alert(
+                                                    &http_client,
+                                                    Alert::FirstFailure {
+                                                        task: label.clone(),
+                                                        error: message.to_string(),
+                                                    },
+                                                    &*app,
+                                                )
+                                                .await;
+                                        }
                                     }
-                                    TaskResultValue::Info(_cow) => {}
                                 }
                             }
                             let last_run_seconds = {
@@ -927,10 +1017,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                         }
                         retries += 1;
                         let max_retries = config.retries.unwrap_or(app.watcher_config().retries);
-                        // We want to get to first failure quickly so we don't
-                        // have a misleading success status page. So if this
-                        // failed and there are no prior attempts, don't retry.
-                        if retries >= max_retries || task_status.read().await.counts.total() == 0 {
+                        if retries >= max_retries {
                             retries = 0;
                             let mut guard = task_status.write().await;
                             let old = &*guard;
@@ -942,23 +1029,58 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> AppBuilder<C> {
                                     None
                                 }
                             };
-                            let _title = label.clone().to_string();
                             let new_error_message = format!("{err:?}");
 
-                            // Sentry/OpsGenie: only send alerts for labels that require it
                             if app.triggers_alert(&label, None) {
                                 match &*old.last_result.value {
                                     // The same error is happening as before
                                     TaskResultValue::Err(e) if e == &new_error_message => (),
 
                                     // Previous state is a different error.
-                                    TaskResultValue::Err(_e) => {
-                                        // New error occurs.
-                                        // todo: send pagerduty trigger
+                                    TaskResultValue::Err(old_error) => {
+                                        if let Some(config) = app.notifier_config().as_ref() {
+                                            config
+                                                .handle_alert(
+                                                    &http_client,
+                                                    Alert::NewFailure {
+                                                        task: label.clone(),
+                                                        old_error: old_error.to_string(),
+                                                        new_error: new_error_message.clone(),
+                                                    },
+                                                    &*app,
+                                                )
+                                                .await;
+                                        }
                                     }
-                                    // Previous state is either unknown (NotYetRun), or Ok
-                                    _ => {
-                                        // todo: send pagerduty trigger
+                                    // Previous state is Ok, now it's an error.
+                                    TaskResultValue::Ok(_) => {
+                                        if let Some(config) = app.notifier_config().as_ref() {
+                                            config
+                                                .handle_alert(
+                                                    &http_client,
+                                                    Alert::Down {
+                                                        task: label.clone(),
+                                                        error: new_error_message.clone(),
+                                                    },
+                                                    &*app,
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                    // Previous state is unknown (NotYetRun) or Info
+                                    TaskResultValue::NotYetRun | TaskResultValue::Info(_) => {
+                                        if let Some(config) = app.notifier_config().as_ref() {
+                                            config
+                                                .handle_alert(
+                                                    &http_client,
+                                                    Alert::FirstFailure {
+                                                        task: label.clone(),
+                                                        error: new_error_message.clone(),
+                                                    },
+                                                    &*app,
+                                                )
+                                                .await;
+                                        }
                                     }
                                 }
                             }

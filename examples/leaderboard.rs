@@ -1,8 +1,9 @@
 use anyhow::{Result, bail};
 use jiff::Zoned;
 use job_watcher::axum::{Router, extract::State, routing::get};
+use job_watcher::slack::SlackConfig;
 use job_watcher::{
-    AppBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
+    Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext, WatcherBuilder,
     config::{Delay, TaskConfig, WatcherConfig},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
@@ -26,11 +27,18 @@ impl DummyApp {
         println!("The watcher will run, but the status page is not served in this example.");
 
         let app = Arc::new(DummyApp(Zoned::now()));
-        let mut builder = AppBuilder::new(app.clone());
+        let mut builder = WatcherBuilder::new(app.clone());
 
         builder.watch_periodic(TaskLabel::new("leaderboard"), LeaderBoard)?;
         builder.watch_periodic(TaskLabel::new("task_two"), TaskTwo)?;
         builder.watch_background_with_status(TaskLabel::new("task_three"), run_task_three)?;
+        builder.watch_background_with_status(TaskLabel::new("task_four"), TaskFour::start)?;
+
+        let task_five = TaskFive(3);
+        builder.watch_background_with_status(
+            TaskLabel::new("task_five"),
+            move |app, heartbeat| async move { task_five.start(app, heartbeat).await },
+        )?;
 
         builder.wait(listener).await
     }
@@ -39,10 +47,6 @@ impl DummyApp {
 impl WatcherAppContext for DummyApp {
     fn environment(&self) -> Option<String> {
         Some("test-env".to_string())
-    }
-
-    fn live_since(&self) -> Zoned {
-        self.0.clone()
     }
 
     fn watcher_config(&self) -> WatcherConfig {
@@ -61,7 +65,7 @@ impl WatcherAppContext for DummyApp {
             TaskConfig {
                 delay: Delay::ConstantSecs(1),
                 out_of_date: Some(30),
-                retries: None,
+                retries: Some(3),
                 delay_between_retries: None,
             },
         );
@@ -83,6 +87,11 @@ impl WatcherAppContext for DummyApp {
 
     fn title(&self) -> String {
         "Example application Status".to_owned()
+    }
+
+    fn notifier_config(&self) -> Option<job_watcher::NotifierConfig> {
+        let webhook = std::env::var("HEALTH_CHECK_SLACK_WEBHOOK").ok();
+        webhook.map(|hook| job_watcher::NotifierConfig::Slack(SlackConfig { webhook_url: hook }))
     }
 
     fn extend_router<S>(&self, router: Router<S>) -> Router<S>
@@ -127,23 +136,16 @@ impl WatchedTask<DummyApp> for TaskTwo {
     async fn run_single(
         &mut self,
         _app: Arc<DummyApp>,
-        heartbeat: Heartbeat,
+        _heartbeat: Heartbeat,
     ) -> Result<WatchedTaskOutput> {
-        let total_success = heartbeat.task_status.read().await.counts.successes;
-        if total_success > 3 {
-            println!("Skipping execution of task two");
-            bail!("Skipping!")
+        let random = rand::random_bool(0.5);
+
+        if random {
+            bail!("Some error from server")
         } else {
-            update_task_two().await
+            Ok(WatchedTaskOutput::new("Now succcess"))
         }
     }
-}
-
-async fn update_task_two() -> Result<WatchedTaskOutput> {
-    println!("Executing task two...");
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    println!("Finished executing task two.");
-    Ok(WatchedTaskOutput::new("Finished executing task two"))
 }
 
 async fn run_task_three(_app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Infallible> {
@@ -155,5 +157,37 @@ async fn run_task_three(_app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Inf
             .await;
         i += 1;
         tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+struct TaskFour;
+
+impl TaskFour {
+    pub async fn start(_app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Infallible> {
+        let mut i = 1;
+        loop {
+            println!("task four");
+            heartbeat
+                .set_status(format!("Status from task four {i}"))
+                .await;
+            i += 1;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+}
+
+struct TaskFive(pub u64);
+
+impl TaskFive {
+    pub async fn start(&self, _app: Arc<DummyApp>, heartbeat: Heartbeat) -> Result<Infallible> {
+        let mut i = self.0;
+        loop {
+            println!("task five");
+            heartbeat
+                .set_status(format!("Status from task five {i}"))
+                .await;
+            i += 1;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
     }
 }
