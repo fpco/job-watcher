@@ -3,7 +3,7 @@ use jiff::Zoned;
 use job_watcher::axum::{Router, extract::State, routing::get};
 use job_watcher::slack::SlackConfig;
 use job_watcher::{
-    WatcherBuilder, Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext,
+    Heartbeat, TaskLabel, WatchedTask, WatchedTaskOutput, WatcherAppContext, WatcherBuilder,
     config::{Delay, TaskConfig, WatcherConfig},
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};

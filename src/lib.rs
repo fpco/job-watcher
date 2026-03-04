@@ -917,34 +917,36 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
                                     }
                                     TaskResultValue::Err(err) => {
                                         if !error
-                                            && let Some(config) = app.notifier_config().as_ref() {
-                                                config
-                                                    .handle_alert(
-                                                        &http_client,
-                                                        Alert::Recovered {
-                                                            task: label.clone(),
-                                                            old_error: err.to_string(),
-                                                            new_message: message.to_string(),
-                                                        },
-                                                        &*app,
-                                                    )
-                                                    .await;
-                                            }
+                                            && let Some(config) = app.notifier_config().as_ref()
+                                        {
+                                            config
+                                                .handle_alert(
+                                                    &http_client,
+                                                    Alert::Recovered {
+                                                        task: label.clone(),
+                                                        old_error: err.to_string(),
+                                                        new_message: message.to_string(),
+                                                    },
+                                                    &*app,
+                                                )
+                                                .await;
+                                        }
                                     }
                                     TaskResultValue::NotYetRun | TaskResultValue::Info(_) => {
                                         if error
-                                            && let Some(config) = app.notifier_config().as_ref() {
-                                                config
-                                                    .handle_alert(
-                                                        &http_client,
-                                                        Alert::FirstFailure {
-                                                            task: label.clone(),
-                                                            error: message.to_string(),
-                                                        },
-                                                        &*app,
-                                                    )
-                                                    .await;
-                                            }
+                                            && let Some(config) = app.notifier_config().as_ref()
+                                        {
+                                            config
+                                                .handle_alert(
+                                                    &http_client,
+                                                    Alert::FirstFailure {
+                                                        task: label.clone(),
+                                                        error: message.to_string(),
+                                                    },
+                                                    &*app,
+                                                )
+                                                .await;
+                                        }
                                     }
                                 }
                             }
