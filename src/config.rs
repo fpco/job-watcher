@@ -33,7 +33,7 @@ pub struct TaskConfig {
     pub delay_between_retries: Option<u32>,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
+#[derive(serde::Deserialize, serde::Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct WatcherConfig {
     /// How many times to retry before giving up
@@ -41,14 +41,4 @@ pub struct WatcherConfig {
     /// How many seconds to delay between retries
     pub delay_between_retries: u32,
     pub tasks: HashMap<String, TaskConfig>,
-}
-
-impl Default for WatcherConfig {
-    fn default() -> Self {
-        Self {
-            retries: 6,
-            delay_between_retries: 20,
-            tasks: Default::default(),
-        }
-    }
 }
