@@ -66,7 +66,7 @@ impl WatcherAppContext for DummyApp {
             TaskConfig {
                 delay: Delay::ConstantSecs(1),
                 out_of_date: Some(30),
-                retries: None,
+                retries: Some(3),
                 delay_between_retries: None,
             },
         );

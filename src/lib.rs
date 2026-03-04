@@ -155,12 +155,6 @@ pub struct TaskCounts {
     pub errors: usize,
 }
 
-impl TaskCounts {
-    fn total(&self) -> usize {
-        self.successes + self.retries + self.errors
-    }
-}
-
 #[derive(Clone, serde::Serialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 pub struct TaskStatus {
@@ -1021,10 +1015,7 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
                         }
                         retries += 1;
                         let max_retries = config.retries.unwrap_or(app.watcher_config().retries);
-                        // We want to get to first failure quickly so we don't
-                        // have a misleading success status page. So if this
-                        // failed and there are no prior attempts, don't retry.
-                        if retries >= max_retries || task_status.read().await.counts.total() == 0 {
+                        if retries >= max_retries {
                             retries = 0;
                             let mut guard = task_status.write().await;
                             let old = &*guard;
@@ -1036,10 +1027,8 @@ impl<C: WatcherAppContext + Send + Sync + Clone + 'static> WatcherBuilder<C> {
                                     None
                                 }
                             };
-                            let _title = label.clone().to_string();
                             let new_error_message = format!("{err:?}");
 
-                            // Sentry/OpsGenie: only send alerts for labels that require it
                             if app.triggers_alert(&label, None) {
                                 match &*old.last_result.value {
                                     // The same error is happening as before
