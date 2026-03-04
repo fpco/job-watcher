@@ -51,7 +51,6 @@ impl WatcherAppContext for DummyApp {
 
     fn watcher_config(&self) -> WatcherConfig {
         let mut config = WatcherConfig::default();
-        config.retries = 0;
         config.tasks.insert(
             "leaderboard".to_string(),
             TaskConfig {
