@@ -3,14 +3,13 @@ use std::{convert::Infallible, sync::Arc, time::Duration};
 use anyhow::Result;
 use axum::{
     extract::{Path, State},
-    http::{self, HeaderMap, StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
     routing::get,
 };
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::{
-    cors::CorsLayer,
     limit::RequestBodyLimitLayer,
     timeout::TimeoutLayer,
     trace::{self, TraceLayer},
@@ -44,13 +43,7 @@ pub(crate) async fn start_rest_api<C: WatcherAppContext + Send + Sync + Clone + 
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(3),
-        ))
-        .layer(
-            CorsLayer::new()
-                .allow_origin(tower_http::cors::Any)
-                .allow_methods([http::method::Method::GET, http::method::Method::HEAD])
-                .allow_headers([http::header::CONTENT_TYPE]),
-        );
+        ));
 
     let router = axum::Router::new()
         .route("/", get(homepage))
