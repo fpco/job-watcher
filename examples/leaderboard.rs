@@ -90,8 +90,11 @@ impl WatcherAppContext for DummyApp {
     }
 
     fn notifier_config(&self) -> Option<job_watcher::NotifierConfig> {
-        let webhook = std::env::var("HEALTH_CHECK_SLACK_WEBHOOK").ok();
-        webhook.map(|hook| job_watcher::NotifierConfig::Slack(SlackConfig { webhook_url: hook }))
+        let webhook_str = std::env::var("HEALTH_CHECK_SLACK_WEBHOOK").ok()?;
+        let hook = webhook_str.parse().ok()?;
+        Some(job_watcher::NotifierConfig::Slack(SlackConfig {
+            webhook_url: hook,
+        }))
     }
 
     fn extend_router<S>(&self, router: Router<S>) -> Router<S>
