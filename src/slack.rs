@@ -1,12 +1,12 @@
 use anyhow::Result;
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde_json::json;
 
 use crate::{Alert, TaskLabel, WatcherAppContext};
 
 #[derive(Clone, Debug)]
 pub struct SlackConfig {
-    pub webhook_url: String,
+    pub webhook_url: Url,
 }
 
 impl SlackConfig {
@@ -97,7 +97,7 @@ impl SlackConfig {
         });
 
         client
-            .post(&self.webhook_url)
+            .post(self.webhook_url.clone())
             .json(&payload)
             .send()
             .await?
@@ -176,7 +176,7 @@ impl SlackConfig {
         });
 
         client
-            .post(&self.webhook_url)
+            .post(self.webhook_url.clone())
             .json(&payload)
             .send()
             .await?
